@@ -13,43 +13,58 @@ import (
 // hosts allowed (usually ecdsa-sha2-nistp256). It then attempts to
 // create a Session calling Output to return only the standard output of
 // that command.
-func SSH(target string, ukey, hkey []byte, cmd string) ([]byte, error) {
+func SSH(target string, ukey, hkey []byte, cmd, in string) (stdout, stderr string, err error) {
 
 	t := strings.Split(target, "@")
 	if len(t) != 2 {
-		return nil, fmt.Errorf(`invalid target: %q`, target)
+		err = fmt.Errorf(`invalid target: %q`, target)
+		return
 	}
 	user := t[0]
 	addr := t[1]
 
 	signer, err := ssh.ParsePrivateKey(ukey)
 	if err != nil {
-		return nil, err
+		return
 	}
 
-	pk, _, _, _, err := ssh.ParseAuthorizedKey(hkey)
+	hostkey, _, _, _, err := ssh.ParseAuthorizedKey(hkey)
 	if err != nil {
-		return nil, err
+		return
 	}
 
-	pubkey, err := ssh.ParsePublicKey(pk.Marshal())
+	hostpub, err := ssh.ParsePublicKey(hostkey.Marshal())
 	if err != nil {
-		return nil, err
+		return
 	}
 
 	conn, err := ssh.Dial(`tcp`, addr, &ssh.ClientConfig{
 		User:            user,
 		Auth:            []ssh.AuthMethod{ssh.PublicKeys(signer)},
-		HostKeyCallback: ssh.FixedHostKey(pubkey),
+		HostKeyCallback: ssh.FixedHostKey(hostpub),
 	})
 	if err != nil {
-		return nil, err
+		return
 	}
 
 	sess, err := conn.NewSession()
 	if err != nil {
-		return nil, err
+		return
 	}
 
-	return sess.Output(cmd)
+	if in != "" {
+		sess.Stdin = strings.NewReader(in)
+	}
+
+	_out := new(strings.Builder)
+	_err := new(strings.Builder)
+	sess.Stdout = _out
+	sess.Stderr = _err
+
+	err = sess.Run(cmd)
+	stdout = _out.String()
+	stderr = _err.String()
+
+	return
+
 }
