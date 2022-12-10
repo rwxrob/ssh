@@ -13,6 +13,7 @@ func ExampleTest() {
 	// 32
 }
 
+/*
 func ExampleOutput_String() {
 	out := remote.Output{
 		`stdout`:  "some standard output\n\non multiple lines",
@@ -44,3 +45,4 @@ NNQLO9MP27BRECLC6CED8QC2RGHQPHRL end
 	// Output:
 	// ignored
 }
+*/
