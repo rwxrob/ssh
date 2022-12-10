@@ -1,4 +1,4 @@
-module github.com/rwxrob/remote
+module github.com/rwxrob/ssh
 
 go 1.18
 
