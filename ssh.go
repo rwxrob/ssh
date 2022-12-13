@@ -177,8 +177,7 @@ func (c MultiHostClient) assert() {
 // Run attempts to dial a random host from Hosts and waits the Timeout
 // duration for a TCP connection before moving to the next host in Hosts
 // and attempting to Dial it repeating the cycle once until number of
-// Attempts is reached. The total amount of time to wait is therefore
-// equal to Timeout * Attempts. The first host to respond to Dial is used.
+// Attempts is reached. The first host to respond to Dial is used.
 // Note that the err returned by a command does not cause additional
 // attempts, only failed Dail attempts. Panics if any User, Hosts,
 // Timeout, or Attempts is undefined.
