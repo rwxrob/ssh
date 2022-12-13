@@ -35,9 +35,9 @@ func ExampleMultiHostClient_Run() {
 	hkey, _ := os.ReadFile(`testdata/hostpubkey`)
 	host, _ := ssh.NewHost(`localhost:22`, hkey)
 	dummy, _ := ssh.NewHost(`localhost:23434`, hkey) // will fail
-	c.Hosts = []*ssh.Host{dummy, host}
+	c.Hosts = []*ssh.Host{dummy, host, dummy, dummy}
 	c.Timeout = 10 * time.Second
-	c.Attempts = 1
+	c.Attempts = 2
 
 	stdout, stderr, err := c.Run(`cat`, `hello`)
 	fmt.Printf("STDOUT\n%v\n", stdout)

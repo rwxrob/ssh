@@ -2,6 +2,7 @@ package ssh
 
 import (
 	"fmt"
+	"log"
 	"math/rand"
 	"strings"
 	"time"
@@ -12,6 +13,7 @@ import (
 // TCPTimeout is the default number of seconds to wait to complete a TCP
 // connection.
 var TCPTimeout = 300 * time.Second
+var AttemptSleep = 5 * time.Second
 
 // Run wraps the ssh.Session.Run command with sensible, stand-alone
 // defaults. This function has no dependencies on any underlying ssh
@@ -201,38 +203,55 @@ func (c MultiHostClient) assert() {
 func (c *MultiHostClient) Run(cmd, in string) (stdout, stderr string, err error) {
 	c.assert()
 
+	rand.Seed(time.Now().UnixNano())
 	c.last = rand.Intn(len(c.Hosts))
+
 	host := c.Hosts[c.last]
 	var client *ssh.Client
+	var attempts int
 
+ATTEMPTS:
 	// keep trying until attempt exhausted
-	for attempts := 0; attempts < c.Attempts; attempts++ {
+	for {
 
-		var callback ssh.HostKeyCallback
+		for n := 0; n < len(c.Hosts); n++ {
 
-		if host.Auth == nil {
-			callback = ssh.InsecureIgnoreHostKey()
-		} else {
-			callback = ssh.FixedHostKey(host.Pubkey)
-		}
+			var callback ssh.HostKeyCallback
 
-		client, err = ssh.Dial(`tcp`, host.Addr, &ssh.ClientConfig{
-			User:            c.User.Name,
-			Auth:            []ssh.AuthMethod{ssh.PublicKeys(c.User.Signer)},
-			HostKeyCallback: callback,
-			Timeout:         c.Timeout,
-		})
+			if host.Auth == nil {
+				callback = ssh.InsecureIgnoreHostKey()
+			} else {
+				callback = ssh.FixedHostKey(host.Pubkey)
+			}
 
-		// error during dial
-		if err != nil {
+			client, err = ssh.Dial(`tcp`, host.Addr, &ssh.ClientConfig{
+				User:            c.User.Name,
+				Auth:            []ssh.AuthMethod{ssh.PublicKeys(c.User.Signer)},
+				HostKeyCallback: callback,
+				Timeout:         c.Timeout,
+			})
+
+			if err == nil {
+				break ATTEMPTS
+			}
+
+			// error during dial
+			log.Print(err)
+
 			if c.last == len(c.Hosts)-1 {
 				c.last = 0
 			} else {
 				c.last++
 			}
+
+			host = c.Hosts[c.last]
 		}
 
-		host = c.Hosts[c.last]
+		attempts++
+		if attempts == c.Attempts {
+			break ATTEMPTS
+		}
+		time.Sleep(AttemptSleep)
 
 	}
 
