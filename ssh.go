@@ -19,8 +19,8 @@ var TCPTimeout = 300 * time.Second
 //
 // Run combines several steps. First, a client secure shell connection
 // is Dialed to the target (user@host:PORT) using the private PEM user
-// key (ukey) and public host key in authorized_keys format (hkey,
-// usually ecdsa-sha2-nistp256). Run then attempts to create a Session
+// key (ukey) and public host key in authorized_keys format (or nil
+// to skip). Run then attempts to create a Session
 // calling Run on it to execute the passed cmd feeding it any standard
 // input (in) provided.  The standard output, standard error are then
 // buffered and returned as strings. The exit value is captured in err
@@ -45,20 +45,33 @@ func Run(target string, ukey, hkey []byte, cmd, in string) (stdout, stderr strin
 		return
 	}
 
-	hostkey, _, _, _, err := ssh.ParseAuthorizedKey(hkey)
-	if err != nil {
-		return
-	}
+	var callback ssh.HostKeyCallback
+	var hostkey, hostpub ssh.PublicKey
 
-	hostpub, err := ssh.ParsePublicKey(hostkey.Marshal())
-	if err != nil {
-		return
+	if hkey != nil {
+
+		hostkey, _, _, _, err = ssh.ParseAuthorizedKey(hkey)
+		if err != nil {
+			return
+		}
+
+		hostpub, err = ssh.ParsePublicKey(hostkey.Marshal())
+		if err != nil {
+			return
+		}
+
+		callback = ssh.FixedHostKey(hostpub)
+
+	} else {
+
+		callback = ssh.InsecureIgnoreHostKey()
+
 	}
 
 	client, err := ssh.Dial(`tcp`, addr, &ssh.ClientConfig{
 		User:            user,
 		Auth:            []ssh.AuthMethod{ssh.PublicKeys(signer)},
-		HostKeyCallback: ssh.FixedHostKey(hostpub),
+		HostKeyCallback: callback,
 		Timeout:         TCPTimeout,
 	})
 	if err != nil {
@@ -130,6 +143,10 @@ func NewHost(addr string, authkey []byte) (*Host, error) {
 	host.Addr = addr
 	host.Auth = authkey
 
+	if authkey == nil {
+		return host, nil
+	}
+
 	host.Netkey, host.Comment, host.Options, _, err = ssh.ParseAuthorizedKey(authkey)
 	if err != nil {
 		return host, err
@@ -191,10 +208,18 @@ func (c *MultiHostClient) Run(cmd, in string) (stdout, stderr string, err error)
 	// keep trying until attempt exhausted
 	for attempts := 0; attempts < c.Attempts; attempts++ {
 
+		var callback ssh.HostKeyCallback
+
+		if host.Auth == nil {
+			callback = ssh.InsecureIgnoreHostKey()
+		} else {
+			callback = ssh.FixedHostKey(host.Pubkey)
+		}
+
 		client, err = ssh.Dial(`tcp`, host.Addr, &ssh.ClientConfig{
 			User:            c.User.Name,
 			Auth:            []ssh.AuthMethod{ssh.PublicKeys(c.User.Signer)},
-			HostKeyCallback: ssh.FixedHostKey(host.Pubkey),
+			HostKeyCallback: callback,
 			Timeout:         c.Timeout,
 		})
 
