@@ -7,6 +7,9 @@ import (
 	"strings"
 )
 
+const Delim = "🤦"
+
+// TODO add all whitelisted commands
 var Allow = map[string]int8{`pwd`: 1, `ls`: 1, `id`: 1, `echo`: 1}
 
 func main() {
@@ -17,7 +20,7 @@ func main() {
 		os.Exit(1)
 	}
 
-	f := strings.Fields(os.Args[2])
+	f := strings.Split(os.Args[2], Delim)
 
 	if _, allowed := Allow[f[0]]; !allowed {
 		log.Printf("command not allowed: %v\n", f[0])

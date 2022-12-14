@@ -14,6 +14,8 @@ import (
 // connection.
 var TCPTimeout = 300 * time.Second
 
+var SafeDelim = "🤦"
+
 // Run wraps the ssh.Session.Run command with sensible, stand-alone
 // defaults. This function has no dependencies on any underlying ssh
 // host installation making it idea for light-weight, remote ssh calls.
@@ -101,6 +103,12 @@ func Run(target string, ukey, hkey []byte, cmd, in string) (stdout, stderr strin
 
 }
 
+func RunSafe(target string, ukey, hkey []byte, cmd string, args ...string) (stdout, stderr string, err error) {
+	safelist := append([]string{cmd}, args...)
+	_cmd := strings.Join(safelist, SafeDelim)
+	return Run(target, ukey, hkey, _cmd, ``)
+}
+
 // ------------------------------- User -------------------------------
 
 // we use an interface for flexibility and to allow the work to create
@@ -167,11 +175,12 @@ func NewHost(addr string, authkey []byte) (*Host, error) {
 // -------------------------- MultiHostClient -------------------------
 
 type MultiHostClient struct {
-	User     *User         // user credentials to use
-	Hosts    []*Host       // hosts to Dial
-	Timeout  time.Duration // TCP/IP timeout (not session)
-	Sleep    time.Duration // time to sleep between Dial calls
-	Attempts int           // number of attempts (0 same as 1)
+	User      *User         // user credentials to use
+	Hosts     []*Host       // hosts to Dial
+	Timeout   time.Duration // TCP/IP timeout (not session)
+	Sleep     time.Duration // time to sleep between Dial calls
+	Attempts  int           // number of attempts (0 same as 1)
+	SafeDelim string        // RunSafe delimiter (default pkg SafeDelim)
 
 	last int
 }
@@ -300,4 +309,13 @@ func (c *MultiHostClient) Run(cmd, stdin string) (stdout, stderr string, err err
 	stderr = _err.String()
 
 	return
+}
+
+func (c MultiHostClient) RunSafe(cmd string, args ...string) (stdout, stderr string, err error) {
+	safelist := append([]string{cmd}, args...)
+	if c.SafeDelim == "" {
+		c.SafeDelim = SafeDelim
+	}
+	_cmd := strings.Join(safelist, c.SafeDelim)
+	return c.Run(_cmd, ``)
 }

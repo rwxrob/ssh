@@ -22,6 +22,19 @@ func ExampleRun() {
 */
 
 /*
+func ExampleRunSafe() {
+	ukey, _ := os.ReadFile(`testdata/blahpriv`)
+	hkey, _ := os.ReadFile(`testdata/hostpubkey`)
+	stdout, stderr, err := ssh.RunSafe(`blah@localhost:22`, ukey, hkey, `echo`, `hello world`)
+	fmt.Printf("STDOUT\n%v\n", stdout)
+	fmt.Printf("STDERR\n%v\n", stderr)
+	fmt.Printf("ERROR\n%v\n", err)
+	// Output:
+	// ignored
+}
+*/
+
+/*
 func ExampleMultiHostClient_Run() {
 
 	c := new(ssh.MultiHostClient)
