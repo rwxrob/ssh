@@ -13,7 +13,6 @@ import (
 // TCPTimeout is the default number of seconds to wait to complete a TCP
 // connection.
 var TCPTimeout = 300 * time.Second
-var AttemptSleep = 5 * time.Second
 
 // Run wraps the ssh.Session.Run command with sensible, stand-alone
 // defaults. This function has no dependencies on any underlying ssh
@@ -168,10 +167,11 @@ func NewHost(addr string, authkey []byte) (*Host, error) {
 // -------------------------- MultiHostClient -------------------------
 
 type MultiHostClient struct {
-	User     *User
-	Hosts    []*Host
-	Timeout  time.Duration
-	Attempts int
+	User     *User         // user credentials to use
+	Hosts    []*Host       // hosts to Dial
+	Timeout  time.Duration // TCP/IP timeout (not session)
+	Sleep    time.Duration // time to sleep between Dial calls
+	Attempts int           // number of attempts (0 same as 1)
 
 	last int
 }
@@ -193,73 +193,93 @@ func (c MultiHostClient) assert() {
 	}
 }
 
-// Run attempts to dial a random host from Hosts and waits the Timeout
-// duration for a TCP connection before moving to the next host in Hosts
-// and attempting to Dial it repeating the cycle once until number of
-// Attempts is reached. The first host to respond to Dial is used.
-// Note that the err returned by a command does not cause additional
-// attempts, only failed Dail attempts. Panics if any User, Hosts,
-// Timeout, or Attempts is undefined.
-func (c *MultiHostClient) Run(cmd, in string) (stdout, stderr string, err error) {
+// Dial attempts to dial a random host from Hosts and rotates through
+// all hosts until one responds or all hosts have been tried.  The first
+// host to respond to Dial is used.  Panics if any User, Hosts, Timeout,
+// or Attempts is undefined.
+func (c *MultiHostClient) Dial() (*ssh.Client, error) {
 	c.assert()
 
 	rand.Seed(time.Now().UnixNano())
 	c.last = rand.Intn(len(c.Hosts))
-
 	host := c.Hosts[c.last]
+
+	var err error
 	var client *ssh.Client
-	var attempts int
+	var callback ssh.HostKeyCallback
 
-ATTEMPTS:
-	// keep trying until attempt exhausted
-	for {
+	for n := 0; n < len(c.Hosts); n++ {
 
-		for n := 0; n < len(c.Hosts); n++ {
-
-			var callback ssh.HostKeyCallback
-
-			if host.Auth == nil {
-				callback = ssh.InsecureIgnoreHostKey()
-			} else {
-				callback = ssh.FixedHostKey(host.Pubkey)
-			}
-
-			client, err = ssh.Dial(`tcp`, host.Addr, &ssh.ClientConfig{
-				User:            c.User.Name,
-				Auth:            []ssh.AuthMethod{ssh.PublicKeys(c.User.Signer)},
-				HostKeyCallback: callback,
-				Timeout:         c.Timeout,
-			})
-
-			if err == nil {
-				break ATTEMPTS
-			}
-
-			// error during dial
-			log.Print(err)
-
-			if c.last == len(c.Hosts)-1 {
-				c.last = 0
-			} else {
-				c.last++
-			}
-
-			host = c.Hosts[c.last]
+		if host.Auth == nil {
+			callback = ssh.InsecureIgnoreHostKey()
+		} else {
+			callback = ssh.FixedHostKey(host.Pubkey)
 		}
 
-		attempts++
-		if attempts == c.Attempts {
-			break ATTEMPTS
-		}
-		time.Sleep(AttemptSleep)
+		client, err = ssh.Dial(`tcp`, host.Addr, &ssh.ClientConfig{
+			User:            c.User.Name,
+			Auth:            []ssh.AuthMethod{ssh.PublicKeys(c.User.Signer)},
+			HostKeyCallback: callback,
+			Timeout:         c.Timeout,
+		})
 
+		if err == nil {
+			return client, nil
+		}
+
+		// error during dial
+		log.Print(err)
+
+		if c.last == len(c.Hosts)-1 {
+			c.last = 0
+		} else {
+			c.last++
+		}
+
+		host = c.Hosts[c.last]
 	}
 
+	return nil, err
+
+}
+
+// DialUntil attempts to Dial Attempts number of times waiting in
+// between for Sleep seconds in between each attempt.
+func (c *MultiHostClient) DialUntil() (client *ssh.Client, err error) {
+	n := 1
+	for {
+		client, err = c.Dial()
+		if client != nil || n >= c.Attempts {
+			break
+		}
+		n++
+		time.Sleep(c.Sleep)
+	}
+	return
+}
+
+// Run gets a client connection with DialUntil and then runs the command
+// (with optional stdin) as a Session on the remote host capturing the
+// stdout, stderr as strings and returning the exit value in the error
+// (see ssh.Session.Run). Note that no sanity checking is performed on
+// the command passed and that most SSH servers will pass the cmd to the
+// shell assigned to the remote user. This means that if semicolon where
+// passed within the cmd string unexpected behavior could result.
+// Therefore, it is critical that the cmd string passed be rigorously
+// validated (usually through a very strict regular expression match) to
+// prevent shell injection vulnerabilities. Another preventative
+// measure is to provide a rudimentary shell for the remote user that
+// disallows any shell expansion of any kind (effectively limiting all
+// remote commands to their exec syscall equivalents).
+func (c *MultiHostClient) Run(cmd, stdin string) (stdout, stderr string, err error) {
+
+	var client *ssh.Client
+	client, err = c.DialUntil()
 	if client == nil {
+		err = fmt.Errorf(`failed to get client connection`)
 		return
 	}
 
-	// successful dialup
 	var sess *ssh.Session
 	sess, err = client.NewSession()
 	if err != nil {

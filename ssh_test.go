@@ -37,6 +37,7 @@ func ExampleMultiHostClient_Run() {
 	dummy, _ := ssh.NewHost(`localhost:23434`, hkey) // will fail
 	c.Hosts = []*ssh.Host{dummy, host, dummy, dummy}
 	c.Timeout = 10 * time.Second
+	c.Sleep = 5 * time.Second
 	c.Attempts = 2
 
 	stdout, stderr, err := c.Run(`cat`, `hello`)
