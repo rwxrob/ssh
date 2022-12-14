@@ -286,8 +286,8 @@ func (c *MultiHostClient) Run(cmd, stdin string) (stdout, stderr string, err err
 		return
 	}
 
-	if in != "" {
-		sess.Stdin = strings.NewReader(in)
+	if stdin != "" {
+		sess.Stdin = strings.NewReader(stdin)
 	}
 
 	_out := new(strings.Builder)

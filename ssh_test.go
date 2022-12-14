@@ -40,7 +40,7 @@ func ExampleMultiHostClient_Run() {
 	c.Sleep = 5 * time.Second
 	c.Attempts = 2
 
-	stdout, stderr, err := c.Run(`cat`, `hello`)
+	stdout, stderr, err := c.Run(`echo hello`, ``)
 	fmt.Printf("STDOUT\n%v\n", stdout)
 	fmt.Printf("STDERR\n%v\n", stderr)
 	fmt.Printf("ERROR\n%v\n", err)
