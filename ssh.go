@@ -77,6 +77,7 @@ func Run(target string, ukey, hkey []byte, cmd, in string) (stdout, stderr strin
 		HostKeyCallback: callback,
 		Timeout:         TCPTimeout,
 	})
+	defer client.Close()
 	if err != nil {
 		return
 	}
