@@ -2,7 +2,9 @@ package ssh_test
 
 import (
 	"fmt"
+	"log"
 	"os"
+	"testing"
 	"time"
 
 	"github.com/rwxrob/ssh"
@@ -126,4 +128,46 @@ func ExampleMultiHostClient_run_assert_attempts() {
 	c.Run(`ls -l ~`, "")
 	// Output:
 	// Attempts cannot be 0
+}
+
+/*
+# Benchmark comparative testing
+
+## Scenarios
+
+### One command per new connection
+
+Same as using `ssh` from the command line with arguments passed to the target server shell.
+
+### One command per session
+
+Same as using `ssh` to login to an interactive session and restarting a shell on that connection for every command in a subshell.
+
+### One command per cached connection
+
+On first command initialize a connection and reuse that connection for subsequent sessions, restoring the connection if it drops for any reason.
+
+### One command per connection pool
+
+Initialize a connection pool per target server and randomize which connection gets each command restoring lost connections when then break or timeout.
+*/
+
+var ukey = `
+-----BEGIN OPENSSH PRIVATE KEY-----
+b3BlbnNzaC1rZXktdjEAAAAABG5vbmUAAAAEbm9uZQAAAAAAAAABAAAAMwAAAAtzc2gtZW
+QyNTUxOQAAACB0/Xdc30JNJx+H1bvs9oZ7POIBi/YyZ4UBfQ/oEyffOQAAAJDswLYs7MC2
+LAAAAAtzc2gtZWQyNTUxOQAAACB0/Xdc30JNJx+H1bvs9oZ7POIBi/YyZ4UBfQ/oEyffOQ
+AAAEDWFaCmeeFjBMAzJvtf6z24ai1dHf2FSUmuHrONv/5K6XT9d1zfQk0nH4fVu+z2hns8
+4gGL9jJnhQF9D+gTJ985AAAACXJ3eHJvYkB0dgECAwQ=
+-----END OPENSSH PRIVATE KEY-----
+`
+
+func BenchmarkRun(b *testing.B) {
+	for i := 0; i < b.N; i++ {
+		stdout, stderr, err := ssh.Run(`user@localhost:22`, []byte(ukey), nil, `echo hi there`, ``)
+		if err != nil || stdout != "hi there\n" || stderr != `` {
+			log.Print(stdout)
+			return
+		}
+	}
 }

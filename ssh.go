@@ -21,8 +21,8 @@ var SafeDelim = "🤦"
 // host installation making it idea for light-weight, remote ssh calls.
 //
 // Run combines several steps. First, a client secure shell connection
-// is Dialed to the target (user@host:PORT) using the private PEM user
-// key (ukey) and public host key in authorized_keys format (or nil
+// is Dialed to the target (user@host:PORT) using the private key of the
+// local user (ukey) and public host key in authorized_keys format (or nil
 // to skip). Run then attempts to create a Session
 // calling Run on it to execute the passed cmd feeding it any standard
 // input (in) provided.  The standard output, standard error are then
@@ -77,15 +77,19 @@ func Run(target string, ukey, hkey []byte, cmd, in string) (stdout, stderr strin
 		HostKeyCallback: callback,
 		Timeout:         TCPTimeout,
 	})
-	defer client.Close()
+
 	if err != nil {
 		return
 	}
+
+	defer client.Close()
 
 	sess, err := client.NewSession()
 	if err != nil {
 		return
 	}
+
+	defer sess.Close()
 
 	if in != "" {
 		sess.Stdin = strings.NewReader(in)
