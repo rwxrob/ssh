@@ -16,6 +16,8 @@ var TCPTimeout = 300 * time.Second
 
 var SafeDelim = "🤦"
 
+var clients = map[string]*ssh.Client{}
+
 // Run wraps the ssh.Session.Run command with sensible, stand-alone
 // defaults. This function has no dependencies on any underlying ssh
 // host installation making it idea for light-weight, remote ssh calls.
@@ -71,25 +73,36 @@ func Run(target string, ukey, hkey []byte, cmd, in string) (stdout, stderr strin
 
 	}
 
-	client, err := ssh.Dial(`tcp`, addr, &ssh.ClientConfig{
-		User:            user,
-		Auth:            []ssh.AuthMethod{ssh.PublicKeys(signer)},
-		HostKeyCallback: callback,
-		Timeout:         TCPTimeout,
-	})
+	var tried bool
+	var client *ssh.Client
 
-	if err != nil {
-		return
+GETCLIENT:
+	client, cached := clients[target]
+	if !cached {
+		client, err = ssh.Dial(`tcp`, addr, &ssh.ClientConfig{
+			User:            user,
+			Auth:            []ssh.AuthMethod{ssh.PublicKeys(signer)},
+			HostKeyCallback: callback,
+			Timeout:         TCPTimeout,
+		})
+		if err != nil {
+			return
+		}
+		clients[target] = client
 	}
-
-	defer client.Close()
 
 	sess, err := client.NewSession()
+	if sess != nil {
+		defer sess.Close()
+	}
 	if err != nil {
+		if !tried {
+			delete(clients, target)
+			tried = true
+			goto GETCLIENT
+		}
 		return
 	}
-
-	defer sess.Close()
 
 	if in != "" {
 		sess.Stdin = strings.NewReader(in)
@@ -149,6 +162,7 @@ type Host struct {
 	Pubkey  ssh.PublicKey // suitable for ssh.FixedHostkey
 	Comment string        // authorized_hosts comment
 	Options []string      // authorized_hosts options
+	Client  *ssh.Client   // last (cached) client connection
 }
 
 func NewHost(addr string, authkey []byte) (*Host, error) {
@@ -208,9 +222,10 @@ func (c MultiHostClient) assert() {
 }
 
 // Dial attempts to dial a random host from Hosts and rotates through
-// all hosts until one responds or all hosts have been tried.  The first
-// host to respond to Dial is used.  Panics if any User, Hosts, Timeout,
-// or Attempts is undefined.
+// all hosts until one responds or all hosts have been tried. Reuses a
+// cached Host.Client if available to prevent creating new TCP/IP
+// connections if not needed. The first host to respond to Dial is
+// used.  Panics if any User, Hosts, Timeout, or Attempts is undefined.
 func (c *MultiHostClient) Dial() (*ssh.Client, error) {
 	c.assert()
 
@@ -287,8 +302,7 @@ func (c *MultiHostClient) DialUntil() (client *ssh.Client, err error) {
 // remote commands to their exec syscall equivalents).
 func (c *MultiHostClient) Run(cmd, stdin string) (stdout, stderr string, err error) {
 
-	var client *ssh.Client
-	client, err = c.DialUntil()
+	client, err := c.DialUntil()
 	if client == nil {
 		err = fmt.Errorf(`failed to get client connection`)
 		return
