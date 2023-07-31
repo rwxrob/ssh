@@ -54,8 +54,7 @@ AAAEDWFaCmeeFjBMAzJvtf6z24ai1dHf2FSUmuHrONv/5K6XT9d1zfQk0nH4fVu+z2hns8
 	)
 
 	// LEFTOFF
-	client.Run(`echo hello`)
-
+	client.Run(`echo hello`, ``)
 	// Output:
 	// hello
 }

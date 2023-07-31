@@ -56,3 +56,8 @@ func (c *Client) Connect() error {
 	// TODO
 	return nil
 }
+
+func (c *Client) Run(cmd, stdin string) (stdout, stderr string, err error) {
+	// TODO
+	return
+}
