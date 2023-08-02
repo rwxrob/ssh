@@ -34,6 +34,15 @@ type Host struct {
 	Options []string
 }
 
+// KeyCallback returns ssh.FixedHostKey(h.Pubkey) if Auth is not nil.
+// Otherwise, returns ssh.InsecureIgnoreHostKey().
+func (h Host) KeyCallback() ssh.HostKeyCallback {
+	if h.Auth != nil {
+		return ssh.FixedHostKey(h.Pubkey)
+	}
+	return ssh.InsecureIgnoreHostKey()
+}
+
 // String implements the fmt.Stringer interface with the Addr as
 // a string.
 func (h Host) String() string { return h.Addr }
