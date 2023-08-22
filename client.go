@@ -82,6 +82,11 @@ func (c *Client) Connect() error {
 	return err
 }
 
+// Run sends the command with optional standard input to the currently
+// open client SSH target as a new ssh.Session. If the SSH connection
+// has not yet been established (c.SSH is nil) or if the command returns
+// any error Run attempts to create a new session and tries again. Any
+// subsequent failure is returned as an error.
 func (c *Client) Run(cmd, stdin string) (stdout, stderr string, err error) {
 
 	if c.SSH == nil {
@@ -91,11 +96,20 @@ func (c *Client) Run(cmd, stdin string) (stdout, stderr string, err error) {
 		}
 	}
 
+	// It is possible the client SSH connection has closed because of
+	// timeout or any other reason. So we attempt to reopen the connection
+	// just once if so.
 	var sess *ssh.Session
 	sess, err = c.SSH.NewSession()
 	if err != nil {
-		// TODO attempt (once) to reconnect
-		return
+		err = c.Connect()
+		if err != nil {
+			return
+		}
+		sess, err = c.SSH.NewSession()
+		if err != nil {
+			return
+		}
 	}
 
 	if stdin != "" {
@@ -110,6 +124,7 @@ func (c *Client) Run(cmd, stdin string) (stdout, stderr string, err error) {
 	sess.Run(cmd)
 	stdout = _out.String()
 	stderr = _err.String()
+	sess.Close()
 
 	return
 }

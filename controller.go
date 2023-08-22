@@ -16,7 +16,8 @@ type Controller struct {
 // NewController initializes a new Controller and returns a pointer to
 // it. Any clients passed to it are added to the internal ClientMap in
 // order. Note that clients with conflicting target (String)
-// representations clobber previously added ones.
+// representations clobber previously added ones. Clients can also be
+// added after the fact with Add (delegated to ClientMap.Add).
 func NewController(clients ...*Client) *Controller {
 	ctl := new(Controller)
 	ctl.ClientMap = *NewClientMap()
@@ -63,4 +64,9 @@ func (c *Controller) JSON() string {
 		return "null"
 	}
 	return string(buf)
+}
+
+// RunOnAny calls client.Run on a random client in the ClientMap.
+func (c *Controller) RunOnAny(cmd, stdin string) (string, string, error) {
+	return c.Random().Run(cmd, stdin)
 }
