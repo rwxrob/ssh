@@ -52,8 +52,25 @@ func (m *ClientMap) Add(c *Client) error {
 	return nil
 }
 
-// Random returns a random client from the Map based on random selection
-// from Keys.
+// Random returns a random active client from the Map based on random
+// selection from Keys.
 func (m *ClientMap) Random() *Client {
-	return m.Map[m.Keys[rand.Intn(len(m.Keys))]]
+	var tried int
+	count := len(m.Keys)
+	n := rand.Intn(count)
+	for {
+		client := m.Map[m.Keys[n]]
+		if client.Connected {
+			return client
+		}
+		tried += 1
+		if tried > count {
+			return nil
+		}
+		n += 1
+		if n >= count {
+			n = 0
+		}
+	}
+	return nil
 }
