@@ -2,8 +2,10 @@ package ssh_test
 
 import (
 	"fmt"
+	"os"
 
 	"github.com/rwxrob/ssh"
+	"gopkg.in/yaml.v3"
 )
 
 func ExampleClient_String() {
@@ -162,4 +164,18 @@ AAAEDWFaCmeeFjBMAzJvtf6z24ai1dHf2FSUmuHrONv/5K6XT9d1zfQk0nH4fVu+z2hns8
 
 	// Output:
 	// bash: line 1: notathing: command not found
+}
+
+func ExampleClient_as_YAML() {
+	client := new(ssh.Client)
+	byt, _ := os.ReadFile(`testdata/client.yaml`)
+	err := yaml.Unmarshal(byt, client)
+	if err != nil {
+		fmt.Println(err)
+	}
+	fmt.Println(client)
+
+	// Output:
+	// someuser@localhost:2223
+
 }

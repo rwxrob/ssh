@@ -3,6 +3,7 @@ package ssh
 import (
 	"encoding/json"
 	"fmt"
+	"net"
 )
 
 // Controller is responsible for coordinating work requests destined for
@@ -15,13 +16,14 @@ type Controller struct {
 
 // NewController initializes a new Controller and returns a pointer to
 // it. Any clients passed to it are added to the internal ClientMap in
-// order. Note that clients with conflicting target (String)
-// representations clobber previously added ones. Clients can also be
-// added after the fact with Add (delegated to ClientMap.Add).
+// order and Connect called. Note that clients with conflicting target
+// (String) representations clobber previously added ones. Clients can
+// also be added after the fact with Add (delegated to ClientMap.Add).
 func NewController(clients ...*Client) *Controller {
 	ctl := new(Controller)
 	ctl.ClientMap = *NewClientMap()
 	for _, client := range clients {
+		client.Connect()
 		ctl.ClientMap.Add(client)
 	}
 	return ctl
@@ -66,7 +68,23 @@ func (c *Controller) JSON() string {
 	return string(buf)
 }
 
-// RunOnAny calls client.Run on a random client in the ClientMap.
-func (c *Controller) RunOnAny(cmd, stdin string) (string, string, error) {
-	return c.Random().Run(cmd, stdin)
+// RunOnAny calls client.Run on a random client in the ClientMap. If
+// error returned is of type net.OpError the client.Connected is set to
+// false and the next client in the ClientMap.Keys order is attempted
+// while Connect is called in a separate goroutine on the failed client
+// (which, if successful, restores the Connected status to true). If none
+// of the clients are connected then an AllUnavailable error is returned.
+func (c *Controller) RunOnAny(cmd, stdin string) (stdout, stderr string, err error) {
+TOP: // avoid function recursion
+	client := c.Random()
+	if client == nil {
+		err = AllUnavailable{}
+		return
+	}
+	stdout, stderr, err = client.Run(cmd, stdin)
+	if _, is := err.(*net.OpError); is {
+		go client.Connect()
+		goto TOP
+	}
+	return
 }

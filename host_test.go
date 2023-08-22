@@ -2,6 +2,9 @@ package ssh_test
 
 import (
 	"fmt"
+	"os"
+
+	"gopkg.in/yaml.v3"
 
 	"github.com/rwxrob/ssh"
 )
@@ -30,4 +33,16 @@ func ExampleHost_with_Authorized_Hosts_Key() {
 
 	// Output:
 	// randomoption
+}
+
+func ExampleHost_from_YAML() {
+	host := new(ssh.Host)
+	byt, _ := os.ReadFile(`testdata/host.yaml`)
+	err := yaml.Unmarshal(byt, host)
+	if err != nil {
+		fmt.Println(err)
+	}
+	fmt.Println(host)
+	// Output:
+	// localhost
 }

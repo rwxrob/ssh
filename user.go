@@ -7,9 +7,9 @@ import (
 )
 
 type User struct {
-	Name   string
-	Key    []byte // original pem
-	Signer ssh.Signer
+	Name   string     `json:"name"`
+	Key    string     `json:"key"` // original pem
+	Signer ssh.Signer `json:"-"`
 }
 
 // String implements fmt.Stringer as Name.
@@ -22,8 +22,8 @@ func NewUser(name, pem string) (*User, error) {
 	var err error
 	u := new(User)
 	u.Name = name
-	u.Key = []byte(strings.TrimSpace(pem))
-	u.Signer, err = ssh.ParsePrivateKey(u.Key)
+	u.Key = strings.TrimSpace(pem)
+	u.Signer, err = ssh.ParsePrivateKey([]byte(u.Key))
 	if err != nil {
 		return u, err
 	}

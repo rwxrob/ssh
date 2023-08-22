@@ -2,6 +2,9 @@ package ssh_test
 
 import (
 	"fmt"
+	"os"
+
+	"gopkg.in/yaml.v3"
 
 	"github.com/rwxrob/ssh"
 )
@@ -25,6 +28,18 @@ AAAEDWFaCmeeFjBMAzJvtf6z24ai1dHf2FSUmuHrONv/5K6XT9d1zfQk0nH4fVu+z2hns8
 	fmt.Println(user)
 	//	fmt.Println(user.Signer)
 
+	// Output:
+	// user
+}
+
+func ExampleUser_from_YAML() {
+	byt, _ := os.ReadFile(`testdata/user.yaml`)
+	user := new(ssh.User)
+	err := yaml.Unmarshal(byt, user)
+	if err != nil {
+		fmt.Println(err)
+	}
+	fmt.Println(user)
 	// Output:
 	// user
 }

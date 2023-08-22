@@ -52,11 +52,19 @@ func (m *ClientMap) Add(c *Client) error {
 	return nil
 }
 
+func (m *ClientMap) UnmarshalYAML(byt []byte) error {
+	// TODO
+	return nil
+}
+
 // Random returns a random active client from the Map based on random
 // selection from Keys.
 func (m *ClientMap) Random() *Client {
 	var tried int
 	count := len(m.Keys)
+	if count == 0 {
+		return nil
+	}
 	n := rand.Intn(count)
 	for {
 		client := m.Map[m.Keys[n]]

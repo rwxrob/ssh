@@ -24,28 +24,28 @@ type Client struct {
 	// Host contains the host name or IP address (Addr) along with any
 	// authorization credentials and other data that would normally be
 	// contained in authorized_hosts.
-	Host *Host
+	Host *Host `json:"host"`
 
 	// Port is simply the port the ssh server is listening on on the
 	// target server.
-	Port int
+	Port int `json:"port"`
 
 	// User contains the name of the user on the target server and
 	// contains the PEM authentication data as well.
-	User *User
+	User *User `json:"user"`
 
 	// Timeout is the default number of seconds to wait to complete a TCP
 	// connection. This is set to DefaultTCPTimeout by NewClient.
-	Timeout time.Duration
+	Timeout time.Duration `json:"timeout"`
 
 	// SSH contains the internal ssh.Client if one has been created. Note
 	// that this internal Client is *not* created until at least one call
 	// to Connect has been made.
-	SSH *ssh.Client
+	SSH *ssh.Client `json:"-"`
 
 	// Connected contains the last checked connection state of the SSH
 	// client.
-	Connected bool
+	Connected bool `json:"-"`
 }
 
 // DefaultPort for SSH connetions. See NewClient.
@@ -75,6 +75,7 @@ func (c Client) String() string {
 // Connect creates a new ssh.Client and assigns it to Host.SSH. If the
 // Host has an Auth will attempt to authenticate the host and the
 // c.User.Signer is always used. Connected is set to true if successful.
+// Always sets a new connection (SSH) even if already Connected.
 func (c *Client) Connect() error {
 	var err error
 	c.SSH, err = ssh.Dial(`tcp`, c.Addr(), &ssh.ClientConfig{
@@ -83,7 +84,7 @@ func (c *Client) Connect() error {
 		HostKeyCallback: c.Host.KeyCallback(),
 		Timeout:         c.Timeout,
 	})
-	if err != nil {
+	if err == nil {
 		c.Connected = true
 	}
 	return err

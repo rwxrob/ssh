@@ -57,10 +57,23 @@ AAAEDWFaCmeeFjBMAzJvtf6z24ai1dHf2FSUmuHrONv/5K6XT9d1zfQk0nH4fVu+z2hns8
 	)
 
 	ctl := ssh.NewController(c1)
+	fmt.Println(c1.Connected)
 	stdout, stderr, err := ctl.RunOnAny(`echo hello`, ``)
 	fmt.Printf("stdout: %q stderr: %q err: %q\n", stdout, stderr, err)
 
 	// Output:
+	// true
 	// stdout: "hello\n" stderr: "" err: %!q(<nil>)
+
+}
+
+func ExampleController_RunOnAny_no_Clients() {
+
+	ctl := ssh.NewController()
+	_, _, err := ctl.RunOnAny(`echo hello`, ``)
+	fmt.Println(err)
+
+	// Output:
+	// all SSH client targets are unavailable
 
 }

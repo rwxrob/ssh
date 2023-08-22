@@ -11,33 +11,33 @@ import (
 type Host struct {
 
 	// Name or IP address (only)
-	Addr string
+	Addr string `json:"addr"`
 
 	// Complete line taken in the authorized_hosts format (included Addr)
-	Auth []byte
+	Auth string `json:"auth"`
 
 	// RFC 4234 (section 6.6). Note that although this is an ssh.PublicKey
 	// that the exact format is very different from other ssh.PublicKey
 	// values (such as Pubkey below).
-	Netkey ssh.PublicKey
+	Netkey ssh.PublicKey `json:"-"`
 
 	// Suitable for use with ssh.FixedHostkey. Note this is different than
 	// other ssh.PublicKey formats (see comment for Netkey).
-	Pubkey ssh.PublicKey
+	Pubkey ssh.PublicKey `json:"-"`
 
 	// Comment from the line that would appear in the authorized_hosts
 	// file along with other data for this host (see Auth, Options).
-	Comment string
+	Comment string `json:"-"`
 
 	// Options allowed in the authorized_hosts file for this given host.
 	// (See Auth and Comment)
-	Options []string
+	Options []string `json:"-"`
 }
 
 // KeyCallback returns ssh.FixedHostKey(h.Pubkey) if Auth is not nil.
 // Otherwise, returns ssh.InsecureIgnoreHostKey().
 func (h Host) KeyCallback() ssh.HostKeyCallback {
-	if h.Auth != nil {
+	if h.Auth != "" {
 		return ssh.FixedHostKey(h.Pubkey)
 	}
 	return ssh.InsecureIgnoreHostKey()
@@ -50,21 +50,21 @@ func (h Host) String() string { return h.Addr }
 // The NewHost function creates, initializes, and returns a new Host
 // suitable for use in SSH connections. The first argument is the host
 // name or IP address or IP address to use as the target (also see
-// ClientMap). The optional line is assumed to match the known_hosts
+// ClientMap). The optional auth is assumed to match the known_hosts
 // format (which can be taken directly from most ~/.ssh/known_hosts
-// files). If the line is not empty it triggers the assignment of the
+// files). If the auth is not empty it triggers the assignment of the
 // remaining Host fields. Otherwise, they remain blank.
-func NewHost(addr, line string) (*Host, error) {
+func NewHost(addr, auth string) (*Host, error) {
 	var err error
 
 	host := new(Host)
 	host.Addr = addr
-	if len(line) == 0 {
+	if len(auth) == 0 {
 		return host, nil
 	}
-	host.Auth = []byte(strings.TrimSpace(line))
+	host.Auth = strings.TrimSpace(auth)
 
-	host.Netkey, host.Comment, host.Options, _, err = ssh.ParseAuthorizedKey(host.Auth)
+	host.Netkey, host.Comment, host.Options, _, err = ssh.ParseAuthorizedKey([]byte(host.Auth))
 	if err != nil {
 		return host, err
 	}
