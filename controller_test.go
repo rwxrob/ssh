@@ -6,7 +6,7 @@ import (
 	"github.com/rwxrob/ssh"
 )
 
-func ExampleController_Print() {
+func ExampleController_YAML() {
 
 	c1 := ssh.NewClient()
 	c1.User, _ = ssh.NewUser(
@@ -24,7 +24,7 @@ AAAEDWFaCmeeFjBMAzJvtf6z24ai1dHf2FSUmuHrONv/5K6XT9d1zfQk0nH4fVu+z2hns8
 	)
 
 	ctl := ssh.NewController(c1)
-	ctl.Print()
+	fmt.Println(ctl.YAML())
 
 	// Output:
 	// client-count: 1
@@ -57,7 +57,7 @@ AAAEDWFaCmeeFjBMAzJvtf6z24ai1dHf2FSUmuHrONv/5K6XT9d1zfQk0nH4fVu+z2hns8
 	)
 
 	ctl := ssh.NewController(c1)
-	fmt.Println(c1.Connected)
+	fmt.Println(c1.Connected())
 	stdout, stderr, err := ctl.RunOnAny(`echo hello`, ``)
 	fmt.Printf("stdout: %q stderr: %q err: %q\n", stdout, stderr, err)
 

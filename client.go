@@ -1,58 +1,84 @@
 package ssh
 
 import (
+	"encoding/json"
 	"fmt"
 	"strings"
 	"time"
 
 	"golang.org/x/crypto/ssh"
+	"gopkg.in/yaml.v3"
 )
+
+// DefaultPort for SSH connetions. See NewClient.
+var DefaultPort = 22
 
 // DefaultTCPTimeout is the default number of seconds to wait to complete a TCP
 // connection. See Client.Timeout also.
 var DefaultTCPTimeout = 300 * time.Second
 
-// Client encapsulates the ssh.Client struct and associates a single
-// user, host, and port number to target for an ssh server connection
+// Client encapsulates an internal ssh.Client and associates a single
+// user, host, and port number to target for specific ssh server connection
 // adding a Connect method which implicitly dials up a connection
-// storing it as the internal ssh.Client when called.
-// The combination in standard ssh target notation (see String()) is
-// used as the key string in the Controller.ClientMap when dealing with
-// multiple targets.
+// setting Connected() and internally caching the client as SSH().
+// Client may be safely marshaled to/from YAML and  JSON directly.
 type Client struct {
 
 	// Host contains the host name or IP address (Addr) along with any
 	// authorization credentials and other data that would normally be
 	// contained in authorized_hosts.
-	Host *Host `json:"host"`
+	Host *Host
 
 	// Port is simply the port the ssh server is listening on on the
 	// target server.
-	Port int `json:"port"`
+	Port int
 
 	// User contains the name of the user on the target server and
 	// contains the PEM authentication data as well.
-	User *User `json:"user"`
+	User *User
 
 	// Timeout is the default number of seconds to wait to complete a TCP
-	// connection. This is set to DefaultTCPTimeout by NewClient.
-	Timeout time.Duration `json:"timeout"`
+	// connection. If unset DefaultTCPTimeout is used.
+	Timeout time.Duration
 
-	// SSH contains the internal ssh.Client if one has been created. Note
-	// that this internal Client is *not* created until at least one call
-	// to Connect has been made.
-	SSH *ssh.Client `json:"-"`
-
-	// Connected contains the last checked connection state of the SSH
-	// client.
-	Connected bool `json:"-"`
+	sshclient *ssh.Client
+	connected bool
 }
 
-// DefaultPort for SSH connetions. See NewClient.
-var DefaultPort = 22
+// SSHClient returns a pointer to the internal ssh.Client used for all
+// connections and sessions.
+func (c Client) SSHClient() *ssh.Client { return c.sshclient }
 
-// NewClient simple sets the Port to the DefaultPort and returns
-// a pointer to a new Client struct. No other initialization is done.
+// Connected returns the last connection state of the internal SSH
+// client. This is set to true on Connect.
+func (c Client) Connected() bool { return c.connected }
+
+// Addr returns addr:port suitable for use in TCP/IP connection strings.
+// See Dest when user wanted. If the Host is nil returns an empty
+// string.
+func (c Client) Addr() string {
+	if c.Host == nil {
+		return ``
+	}
+	return fmt.Sprintf("%v:%v", c.Host.Addr, c.Port)
+}
+
+// Dest returns a user@host:port destination suitable for inclusion in a full URI
+// with schema or the common short form. Empty User or User.Name omits it from
+// the Dest string. Port, however, is always included.
+func (c Client) Dest() string {
+	str := c.Addr()
+	if len(str) == 0 {
+		return ``
+	}
+	if c.User != nil || len(c.User.Name) == 0 {
+		return c.User.Name + `@` + str
+	}
+	return str
+}
+
+// NewClient returns a pointer to a new Client with defaults set
+// (DefaultPort, DefaultTCPTimeout).
 func NewClient() *Client {
 	c := new(Client)
 	c.Port = DefaultPort
@@ -60,16 +86,24 @@ func NewClient() *Client {
 	return c
 }
 
-// Addr returns addr:port.
-func (c Client) Addr() string {
-	return fmt.Sprintf("%v:%v", c.Host.Addr, c.Port)
+// JSON is a convenience method for marshaling as JSON string.
+// Marshaling errors return a "null" string.
+func (c Client) JSON() string {
+	byt, err := json.Marshal(c)
+	if byt == nil || err != nil {
+		return "null"
+	}
+	return string(byt)
 }
 
-// String fulfills the fmt.Stringer interface by providing the unique
-// key identifier for Controller.ClientMap. See the String()
-// implementations of Host and User as well.
-func (c Client) String() string {
-	return fmt.Sprintf(`%v@%v:%v`, c.User, c.Host, c.Port)
+// YAML is a convenience method for marshaling as YAML string.
+// Marshaling errors return a "null" string.
+func (c Client) YAML() string {
+	byt, err := yaml.Marshal(c)
+	if byt == nil || err != nil {
+		return "null"
+	}
+	return string(byt)
 }
 
 // Connect creates a new ssh.Client and assigns it to Host.SSH. If the
@@ -78,14 +112,14 @@ func (c Client) String() string {
 // Always sets a new connection (SSH) even if already Connected.
 func (c *Client) Connect() error {
 	var err error
-	c.SSH, err = ssh.Dial(`tcp`, c.Addr(), &ssh.ClientConfig{
+	c.sshclient, err = ssh.Dial(`tcp`, c.Addr(), &ssh.ClientConfig{
 		User:            c.User.Name,
-		Auth:            []ssh.AuthMethod{ssh.PublicKeys(c.User.Signer)},
+		Auth:            []ssh.AuthMethod{ssh.PublicKeys(c.User.Signer())},
 		HostKeyCallback: c.Host.KeyCallback(),
 		Timeout:         c.Timeout,
 	})
 	if err == nil {
-		c.Connected = true
+		c.connected = true
 	}
 	return err
 }
@@ -101,7 +135,7 @@ func (c *Client) Connect() error {
 // associated method calls.
 func (c *Client) Run(cmd, stdin string) (stdout, stderr string, err error) {
 
-	if c.SSH == nil {
+	if c.sshclient == nil {
 		err = c.Connect()
 		if err != nil {
 			return
@@ -109,7 +143,7 @@ func (c *Client) Run(cmd, stdin string) (stdout, stderr string, err error) {
 	}
 
 	var sess *ssh.Session
-	sess, err = c.SSH.NewSession()
+	sess, err = c.sshclient.NewSession()
 	if err != nil {
 		return
 	}

@@ -8,36 +8,6 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
-func ExampleClient_String() {
-
-	host := &ssh.Host{Addr: `host`}
-	user := &ssh.User{Name: `user`}
-	client := &ssh.Client{Host: host, User: user, Port: 22}
-
-	fmt.Println(client)
-	fmt.Println(client.String())
-
-	user.Name = `other`
-	fmt.Println(client)
-
-	client.Host = nil
-	fmt.Println(client)
-
-	client.User = nil
-	fmt.Println(client)
-
-	client.Port = 0
-	fmt.Println(client)
-
-	// Output:
-	// user@host:22
-	// user@host:22
-	// other@host:22
-	// other@<nil>:22
-	// <nil>@<nil>:22
-	// <nil>@<nil>:0
-}
-
 func ExampleClient_Run_no_Host_Key() {
 
 	client := ssh.NewClient()
@@ -173,7 +143,7 @@ func ExampleClient_as_YAML() {
 	if err != nil {
 		fmt.Println(err)
 	}
-	fmt.Println(client)
+	fmt.Println(client.YAML())
 
 	// Output:
 	// someuser@localhost:2223

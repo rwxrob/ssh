@@ -2,49 +2,31 @@ package ssh
 
 import (
 	"encoding/json"
-	"fmt"
+	"log"
+	"math/rand"
 	"net"
+
+	"gopkg.in/yaml.v3"
 )
 
 // Controller is responsible for coordinating work requests destined for
-// the ssh target servers as contained in the embedded ClientMap. Note
-// that the methods of ClientMap are available to Controller directly
-// through embedded delegation.
+// the ssh target servers as contained in its list of Clients.
 type Controller struct {
-	ClientMap
+	Clients []*Client
 }
 
 // NewController initializes a new Controller and returns a pointer to
-// it. Any clients passed to it are added to the internal ClientMap in
-// order and Connect called. Note that clients with conflicting target
-// (String) representations clobber previously added ones. Clients can
-// also be added after the fact with Add (delegated to ClientMap.Add).
+// it. Any clients passed have Connect called and are appended to the
+// internal Client list.
 func NewController(clients ...*Client) *Controller {
 	ctl := new(Controller)
-	ctl.ClientMap = *NewClientMap()
-	for _, client := range clients {
+	ctl.Clients = make([]*Client, len(clients))
+	for n, client := range clients {
 		client.Connect()
-		ctl.ClientMap.Add(client)
+		ctl.Clients[n] = client
 	}
 	return ctl
 }
-
-// String fulfills the fmt.Stringer interface by first printing the
-// clientCount and then looping through the embedded clients in the
-// ClientMap printing their target identifier strings and a status
-// summary for each as a convenience. See Client.String as well.
-func (c Controller) String() string {
-	var buf string
-	buf += fmt.Sprintf("client-count: %v\n", len(c.ClientMap.Map))
-	for _, client := range c.ClientMap.Map {
-		buf += fmt.Sprintln(client)
-	}
-	return buf
-}
-
-// Print simply prints String() with an additional line return for
-// convenience.
-func (c *Controller) Print() { fmt.Println(c.String()) }
 
 // JSON does the same String but outputs a JSON string better suited for
 // parsing by applications wishing to display the state of the
@@ -60,7 +42,7 @@ func (c *Controller) JSON() string {
 	}
 	tmp := struct {
 		clientCount int `json:"client-count"`
-	}{len(c.ClientMap.Map)}
+	}{len(c.Clients)}
 	buf, err := json.Marshal(tmp)
 	if err != nil {
 		return "null"
@@ -68,15 +50,63 @@ func (c *Controller) JSON() string {
 	return string(buf)
 }
 
-// RunOnAny calls client.Run on a random client in the ClientMap. If
-// error returned is of type net.OpError the client.Connected is set to
-// false and the next client in the ClientMap.Keys order is attempted
-// while Connect is called in a separate goroutine on the failed client
-// (which, if successful, restores the Connected status to true). If none
-// of the clients are connected then an AllUnavailable error is returned.
+// YAML returns the same data as JSON but as YAML instead suitable for
+// persisting to a file. Such files can be used to initialize a new
+// Controller with Load().
+func (c *Controller) YAML() string {
+	if c == nil {
+		return "null"
+	}
+	tmp := struct {
+		clientCount int `json:"client-count"`
+		clients     []*Client
+	}{len(c.Clients), c.Clients}
+	log.Print(tmp.clients)
+
+	buf, err := yaml.Marshal(tmp)
+	if err != nil {
+		return "null"
+	}
+	return string(buf)
+}
+
+// RandomClient returns a random active client from the Clients list
+// skipping any that are not Connected. Returns nil if no Connected
+// clients are available.
+func (c *Controller) RandomClient() *Client {
+	var tried int
+	count := len(c.Clients)
+	if count == 0 {
+		return nil
+	}
+	n := rand.Intn(count)
+	for {
+		client := c.Clients[n]
+		if client.connected {
+			return client
+		}
+		tried += 1
+		if tried > count {
+			return nil
+		}
+		n += 1
+		if n >= count {
+			n = 0
+		}
+	}
+	return nil
+}
+
+// RunOnAny calls client.Run on a random client from the Clients list.
+// If error returned is of type net.OpError the client.Connected is set
+// to false and the next client in the ClientMap.Keys order is attempted
+// while Connect is called on the Client with the net.OpError from
+// a separate goroutine (which, if successful, restores the Connected
+// status to true). If none of the clients are connected then an
+// AllUnavailable error is returned.
 func (c *Controller) RunOnAny(cmd, stdin string) (stdout, stderr string, err error) {
-TOP: // avoid function recursion
-	client := c.Random()
+TOP:
+	client := c.RandomClient()
 	if client == nil {
 		err = AllUnavailable{}
 		return
