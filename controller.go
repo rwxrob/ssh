@@ -39,44 +39,24 @@ func (c *Controller) Connect() *Controller {
 	return c
 }
 
-// JSON does the same String but outputs a JSON string better suited for
-// parsing by applications wishing to display the state of the
-// Controller. This provides some basic observability into the
-// Controller's behavior as well. JSON never has any actual line returns
-// allowing the full JSON to be saved to a single line of text (for
-// logging, etc.) Note that in the rare case the Controller itself (the
-// receiver) is nil that this will output null (not <nil>, no quotes,
-// which is valid JSON).
-func (c *Controller) JSON() string {
-	if c == nil {
+// JSON is a convenience method for marshaling as JSON string.
+// Marshaling errors return a "null" string.
+func (c Controller) JSON() string {
+	byt, err := json.Marshal(c)
+	if byt == nil || err != nil {
 		return "null"
 	}
-	tmp := struct {
-		clientCount int `json:"client-count"`
-	}{len(c.Clients)}
-	buf, err := json.Marshal(tmp)
-	if err != nil {
-		return "null"
-	}
-	return string(buf)
+	return string(byt)
 }
 
-// YAML returns the same data as JSON but as YAML instead suitable for
-// persisting to a file. Such files can be used to initialize a new
-// Controller with Load().
-func (c *Controller) YAML() string {
-	if c == nil {
+// YAML is a convenience method for marshaling as YAML string.
+// Marshaling errors return a "null" string.
+func (c Controller) YAML() string {
+	byt, err := yaml.Marshal(c)
+	if byt == nil || err != nil {
 		return "null"
 	}
-	tmp := struct {
-		clientCount int `json:"client-count"`
-		clients     []*Client
-	}{len(c.Clients), c.Clients}
-	buf, err := yaml.Marshal(tmp)
-	if err != nil {
-		return "null"
-	}
-	return string(buf)
+	return string(byt)
 }
 
 // RandomClient returns a random active client from the Clients list
