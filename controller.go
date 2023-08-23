@@ -15,16 +15,25 @@ type Controller struct {
 }
 
 // NewController initializes a new Controller and returns a pointer to
-// it. Any clients passed have Connect called and are appended to the
-// internal Client list.
+// it. Any clients passed are appended to the internal Client list (but
+// not yet connected). See Connect().
 func NewController(clients ...*Client) *Controller {
 	ctl := new(Controller)
 	ctl.Clients = make([]*Client, len(clients))
 	for n, client := range clients {
-		client.Connect()
 		ctl.Clients[n] = client
 	}
 	return ctl
+}
+
+// Connect simultaneously calls Connect on all Clients. No attempt at
+// error checking for successful connections is attempted but the
+// Connected() and LastError() properties of each client can be can be
+// examined for information.
+func (c *Controller) Connect() {
+	for _, client := range c.Clients {
+		go client.Connect()
+	}
 }
 
 // JSON does the same String but outputs a JSON string better suited for

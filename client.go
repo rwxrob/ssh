@@ -109,7 +109,8 @@ func (c Client) YAML() string {
 // Connect creates a new ssh.Client and assigns it to Host.SSH. If the
 // Host has an Auth will attempt to authenticate the host and the
 // c.User.Signer is always used. Connected is set to true if successful.
-// Always sets a new connection (SSH) even if already Connected.
+// Always reinitializes a new connection (see SSH()) even if already
+// Connected.
 func (c *Client) Connect() error {
 	var err error
 	c.sshclient, err = ssh.Dial(`tcp`, c.Addr(), &ssh.ClientConfig{
