@@ -2,7 +2,6 @@ package ssh
 
 import (
 	"encoding/json"
-	"log"
 	"math/rand"
 	"net"
 
@@ -61,8 +60,6 @@ func (c *Controller) YAML() string {
 		clientCount int `json:"client-count"`
 		clients     []*Client
 	}{len(c.Clients), c.Clients}
-	log.Print(tmp.clients)
-
 	buf, err := yaml.Marshal(tmp)
 	if err != nil {
 		return "null"

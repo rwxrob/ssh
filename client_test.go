@@ -146,6 +146,13 @@ func ExampleClient_as_YAML() {
 	fmt.Println(client.YAML())
 
 	// Output:
-	// someuser@localhost:2223
+	// host:
+	//     addr: localhost
+	//     auth: ""
+	// port: 2223
+	// user:
+	//     name: someuser
+	//     key: somethingsecret
+	// timeout: 5m0s
 
 }
