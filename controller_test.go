@@ -56,7 +56,7 @@ AAAEDWFaCmeeFjBMAzJvtf6z24ai1dHf2FSUmuHrONv/5K6XT9d1zfQk0nH4fVu+z2hns8
 		`localhost`, ``,
 	)
 
-	ctl := ssh.NewController(c1)
+	ctl := ssh.NewController(c1).Connect()
 	fmt.Println(c1.Connected())
 	stdout, stderr, err := ctl.RunOnAny(`echo hello`, ``)
 	fmt.Printf("stdout: %q stderr: %q err: %q\n", stdout, stderr, err)

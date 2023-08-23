@@ -26,14 +26,17 @@ func NewController(clients ...*Client) *Controller {
 	return ctl
 }
 
-// Connect simultaneously calls Connect on all Clients. No attempt at
-// error checking for successful connections is attempted but the
-// Connected() and LastError() properties of each client can be can be
-// examined for information.
-func (c *Controller) Connect() {
+// Connect synchronously calls Connect on all Clients ensuring that all
+// Clients that can have successfully connected before returning. No
+// attempt at error checking for successful connections is attempted but
+// the Connected() and LastError() properties of each client can be can
+// be examined for information. A reference to self is returned as
+// convenience allowing this to be changed onto NewController.
+func (c *Controller) Connect() *Controller {
 	for _, client := range c.Clients {
-		go client.Connect()
+		client.Connect()
 	}
+	return c
 }
 
 // JSON does the same String but outputs a JSON string better suited for
