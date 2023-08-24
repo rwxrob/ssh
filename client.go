@@ -43,6 +43,7 @@ type Client struct {
 
 	sshclient *ssh.Client
 	connected bool
+	lasterror error
 }
 
 // SSHClient returns a pointer to the internal ssh.Client used for all
@@ -52,6 +53,9 @@ func (c Client) SSHClient() *ssh.Client { return c.sshclient }
 // Connected returns the last connection state of the internal SSH
 // client. This is set to true on Connect.
 func (c Client) Connected() bool { return c.connected }
+
+// LastError returns the last error (if any) from an attempt to Connect.
+func (c Client) LastError() error { return c.lasterror }
 
 // Addr returns addr:port suitable for use in TCP/IP connection strings.
 // See Dest when user wanted. If the Host is nil returns an empty
@@ -121,6 +125,8 @@ func (c *Client) Connect() error {
 	})
 	if err == nil {
 		c.connected = true
+	} else {
+		c.lasterror = err
 	}
 	return err
 }
