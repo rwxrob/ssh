@@ -3,6 +3,7 @@ package ssh
 import (
 	"encoding/json"
 	"fmt"
+	"io"
 	"strings"
 	"time"
 
@@ -81,15 +82,6 @@ func (c Client) Dest() string {
 	return str
 }
 
-// NewClient returns a pointer to a new Client with defaults set
-// (DefaultPort, DefaultTCPTimeout).
-func NewClient() *Client {
-	c := new(Client)
-	c.Port = DefaultPort
-	c.Timeout = DefaultTCPTimeout
-	return c
-}
-
 // JSON is a convenience method for marshaling as JSON string.
 // Marshaling errors return a "null" string.
 func (c Client) JSON() string {
@@ -110,6 +102,56 @@ func (c Client) YAML() string {
 	return string(byt)
 }
 
+// NewClient returns a pointer to a new Client with defaults set
+// (DefaultPort, DefaultTCPTimeout).
+func NewClient() *Client {
+	c := new(Client)
+	c.Port = DefaultPort
+	c.Timeout = DefaultTCPTimeout
+	return c
+}
+
+// NewClientFromYAML uses io.ReadAll to read all the bytes from the
+// io.Reader passed and converts them to a new Client. Note that YAML
+// references are observed meaning that a single Client entry can have
+// its Host or User set to a reference pointing elsewhere in the YAML
+// file. The Port and TCPTimeout are set to defaults if unset. Also see
+// NewClient.
+func NewClientFromYAML(r io.Reader) (*Client, error) {
+	c := new(Client)
+	byt, err := io.ReadAll(r)
+	if err != nil {
+		return nil, err
+	}
+	err = yaml.Unmarshal(byt, c)
+	if c.Port == 0 {
+		c.Port = DefaultPort
+	}
+	if c.Timeout == 0 {
+		c.Timeout = DefaultTCPTimeout
+	}
+	return c, err
+}
+
+// NewClientFromJSON uses io.ReadAll to read all the bytes from the
+// io.Reader passed and converts them to a new Client. The Port and
+// Timeout are set to defaults if unset. Also see NewClient.
+func NewClientFromJSON(r io.Reader) (*Client, error) {
+	c := new(Client)
+	byt, err := io.ReadAll(r)
+	if err != nil {
+		return nil, err
+	}
+	err = json.Unmarshal(byt, c)
+	if c.Port == 0 {
+		c.Port = DefaultPort
+	}
+	if c.Timeout == 0 {
+		c.Timeout = DefaultTCPTimeout
+	}
+	return c, err
+}
+
 // Connect creates a new ssh.Client and assigns it to Host.SSH. If the
 // Host has an Auth will attempt to authenticate the host and the
 // c.User.Signer is always used. Connected is set to true if successful.
@@ -126,6 +168,7 @@ func (c *Client) Connect() error {
 	if err == nil {
 		c.connected = true
 	} else {
+		c.connected = false
 		c.lasterror = err
 	}
 	return err

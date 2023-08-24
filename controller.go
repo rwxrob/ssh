@@ -30,9 +30,7 @@ func NewController(clients ...*Client) *Controller {
 // NewControllerFromYAML uses io.ReadAll to read all the bytes from the
 // io.Reader passed and converts them to a new controller with multiple
 // Clients. Note that YAML references are observed meaning that a single
-// host entry can be used for multiple clients.
-//
-// Also see NewController.
+// host entry can be used for multiple clients. Also see NewController.
 func NewControllerFromYAML(r io.Reader) (*Controller, error) {
 	ctl := new(Controller)
 	byt, err := io.ReadAll(r)

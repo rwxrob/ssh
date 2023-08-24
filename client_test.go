@@ -2,10 +2,9 @@ package ssh_test
 
 import (
 	"fmt"
-	"os"
+	"strings"
 
 	"github.com/rwxrob/ssh"
-	"gopkg.in/yaml.v3"
 )
 
 func ExampleClient_Run_no_Host_Key() {
@@ -136,20 +135,34 @@ AAAEDWFaCmeeFjBMAzJvtf6z24ai1dHf2FSUmuHrONv/5K6XT9d1zfQk0nH4fVu+z2hns8
 	// bash: line 1: notathing: command not found
 }
 
-func ExampleClient_as_YAML() {
-	client := new(ssh.Client)
-	byt, _ := os.ReadFile(`testdata/client.yaml`)
-	err := yaml.Unmarshal(byt, client)
-	if err != nil {
-		fmt.Println(err)
-	}
+func ExampleNewClientFromYAML() {
+
+	// YAML references are supported
+
+	source := `
+immauser: &auser
+  name: someuser
+  key: somethingsecret
+
+host:
+  addr: localhost
+
+user: *auser
+
+# timeout and port set set to default if zero
+timeout: 0
+#port: 2223
+
+`
+
+	client, _ := ssh.NewClientFromYAML(strings.NewReader(source))
 	fmt.Println(client.YAML())
 
 	// Output:
 	// host:
 	//     addr: localhost
 	//     auth: ""
-	// port: 2223
+	// port: 22
 	// user:
 	//     name: someuser
 	//     key: somethingsecret
