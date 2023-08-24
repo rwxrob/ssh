@@ -2,6 +2,7 @@ package ssh
 
 import (
 	"encoding/json"
+	"io"
 	"strings"
 
 	"golang.org/x/crypto/ssh"
@@ -55,23 +56,6 @@ func (h Host) KeyCallback() ssh.HostKeyCallback {
 	return ssh.InsecureIgnoreHostKey()
 }
 
-// The NewHost function creates, initializes, and returns a new Host
-// suitable for use in SSH connections. The first argument is the host
-// name or IP address or IP address to use (Addr) The optional auth
-// (Auth) is assumed to match the known_hosts format (which can be taken
-// directly from most ~/.ssh/known_hosts files). If the auth is not an
-// empty string then the assignment of the remaining related internal
-// fields is done (Netkey(), Pubkey(), Comments(), Options()).
-func NewHost(addr, auth string) (*Host, error) {
-	h := new(Host)
-	h.Addr = addr
-	if len(auth) == 0 {
-		return h, nil
-	}
-	h.Auth = strings.TrimSpace(auth)
-	return h, h.Init()
-}
-
 // Init populates the required internal fields from the available
 // exported ones (Addr, Auth) and is called from NewHost. Remember to
 // call Init after unmarshaling a new Host.
@@ -114,22 +98,49 @@ func (h Host) YAML() string {
 	return string(byt)
 }
 
-// UnmarshalJSON fulfills the json.Unmarshaler interface by unmarshaling
-// the public fields and calling Init to populate the internal ones.
-func (h *Host) UnmarshalJSON(byt []byte) error {
-	err := json.Unmarshal(byt, h)
-	if err != nil {
-		return err
+// The NewHost function creates, initializes, and returns a new Host
+// suitable for use in SSH connections. The first argument is the host
+// name or IP address or IP address to use (Addr) The optional auth
+// (Auth) is assumed to match the known_hosts format (which can be taken
+// directly from most ~/.ssh/known_hosts files). If the auth is not an
+// empty string then the assignment of the remaining related internal
+// fields is done (Netkey(), Pubkey(), Comments(), Options()).
+func NewHost(addr, auth string) (*Host, error) {
+	h := new(Host)
+	h.Addr = addr
+	if len(auth) == 0 {
+		return h, nil
 	}
-	return h.Init()
+	h.Auth = strings.TrimSpace(auth)
+	return h, h.Init()
 }
 
-// UnmarshalYAML fulfills the yaml.Unmarshaler interface by unmarshaling
-// the public fields and calling Init to populate the internal ones.
-func (h *Host) UnmarshalYAML(byt []byte) error {
-	err := json.Unmarshal(byt, h)
+// NewHostFromYAML reads the Name and Key from YAML instead of passing.
+// See NewHost. ReadAll is used.
+func NewHostFromYAML(r io.Reader) (*Host, error) {
+	h := new(Host)
+	byt, err := io.ReadAll(r)
 	if err != nil {
-		return err
+		return nil, err
 	}
-	return h.Init()
+	err = yaml.Unmarshal(byt, h)
+	if err != nil {
+		return nil, err
+	}
+	return h, h.Init()
+}
+
+// NewHostFromJSON reads the Name and Key from JSON instead of passing.
+// See NewHost. ReadAll is used.
+func NewHostFromJSON(r io.Reader) (*Host, error) {
+	h := new(Host)
+	byt, err := io.ReadAll(r)
+	if err != nil {
+		return nil, err
+	}
+	err = json.Unmarshal(byt, h)
+	if err != nil {
+		return nil, err
+	}
+	return h, h.Init()
 }
