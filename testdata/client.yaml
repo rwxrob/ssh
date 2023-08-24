@@ -1,7 +1,0 @@
-host:
-  addr: localhost
-user:
-  name: someuser
-  key: somethingsecret
-port: 2223
-timeout: 5m

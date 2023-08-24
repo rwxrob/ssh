@@ -1,7 +1,7 @@
 #!/usr/bin/bash
 
 x.image () {
-	podman build -t ssh-server .
+	podman build -t ssh-server containers
 }
 
 x.clean () {

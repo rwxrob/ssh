@@ -2,7 +2,7 @@ package ssh_test
 
 import (
 	"fmt"
-	"os"
+	"strings"
 
 	"github.com/rwxrob/ssh"
 )
@@ -25,10 +25,18 @@ func ExampleNewHost() {
 }
 
 func ExampleNewHostFromYAML() {
-	file, _ := os.Open(`testdata/host.yaml`)
-	host, _ := ssh.NewHostFromYAML(file)
+
+	source := `
+addr: localhost
+auth: |
+  randomoption ecdsa-sha2-nistp256 AAAAE2VjZHNhLXNoYTItbmlzdHAyNTYAAAAIbmlzdHAyNTYAAABBBI/WBBaaNFajVHCL0+rQqWP3zhpyXo357iPUvl0GGHWrY6t42WTNJ+bk8shRq7eq8KwefZeL4YvsnekcZb8Uq+8=
+`
+
+	host, _ := ssh.NewHostFromYAML(strings.NewReader(source))
+
 	fmt.Println(host.Options()[0])
 	fmt.Println(host.YAML())
+
 	// Output:
 	// randomoption
 	// addr: localhost
@@ -37,10 +45,19 @@ func ExampleNewHostFromYAML() {
 }
 
 func ExampleNewHostFromJSON() {
-	file, _ := os.Open(`testdata/host.json`)
-	host, _ := ssh.NewHostFromJSON(file)
+
+	source := `
+{
+  "addr": "localhost",
+  "auth": "randomoption ecdsa-sha2-nistp256 AAAAE2VjZHNhLXNoYTItbmlzdHAyNTYAAAAIbmlzdHAyNTYAAABBBI/WBBaaNFajVHCL0+rQqWP3zhpyXo357iPUvl0GGHWrY6t42WTNJ+bk8shRq7eq8KwefZeL4YvsnekcZb8Uq+8=\n"
+}
+`
+
+	host, _ := ssh.NewHostFromJSON(strings.NewReader(source))
+
 	fmt.Println(host.Options()[0])
 	fmt.Println(host.YAML())
+
 	// Output:
 	// randomoption
 	// addr: localhost
