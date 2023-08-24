@@ -2,6 +2,7 @@ package ssh
 
 import (
 	"encoding/json"
+	"io"
 	"math/rand"
 	"net"
 
@@ -24,6 +25,35 @@ func NewController(clients ...*Client) *Controller {
 		ctl.Clients[n] = client
 	}
 	return ctl
+}
+
+// NewControllerFromYAML uses io.ReadAll to read all the bytes from the
+// io.Reader passed and converts them to a new controller with multiple
+// Clients. Note that YAML references are observed meaning that a single
+// host entry can be used for multiple clients.
+//
+// Also see NewController.
+func NewControllerFromYAML(r io.Reader) (*Controller, error) {
+	ctl := new(Controller)
+	byt, err := io.ReadAll(r)
+	if err != nil {
+		return nil, err
+	}
+	err = yaml.Unmarshal(byt, ctl)
+	return ctl, err
+}
+
+// NewControllerFromJSON uses io.ReadAll to read all the bytes from the
+// io.Reader passed and converts them to a new controller with multiple
+// Clients. Also see NewController.
+func NewControllerFromJSON(r io.Reader) (*Controller, error) {
+	ctl := new(Controller)
+	byt, err := io.ReadAll(r)
+	if err != nil {
+		return nil, err
+	}
+	err = json.Unmarshal(byt, ctl)
+	return ctl, err
 }
 
 // Connect synchronously calls Connect on all Clients ensuring that all
@@ -102,6 +132,7 @@ TOP:
 	}
 	stdout, stderr, err = client.Run(cmd, stdin)
 	if _, is := err.(*net.OpError); is {
+		client.connected = false
 		go client.Connect()
 		goto TOP
 	}
