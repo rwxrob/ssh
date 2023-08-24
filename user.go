@@ -2,6 +2,7 @@ package ssh
 
 import (
 	"encoding/json"
+	"io"
 	"strings"
 
 	"golang.org/x/crypto/ssh"
@@ -39,17 +40,50 @@ func (u User) YAML() string {
 	return string(byt)
 }
 
-// NewUser creates and initializes a new user with a given name using
-// the passed PEM key string to parse the private key and
-// derive the Signer (which is essential for making connections).
-func NewUser(name, pem string) (*User, error) {
-	var err error
+// NewUser creates and initializes a new user (by calling Init()) with
+// a given name using the passed PEM key string to parse the private key
+// and derive the Signer() (which is essential for making connections).
+func NewUser(name, key string) (*User, error) {
 	u := new(User)
 	u.Name = name
-	u.Key = strings.TrimSpace(pem)
-	u.signer, err = ssh.ParsePrivateKey([]byte(u.Key))
+	u.Key = strings.TrimSpace(key)
+	return u, u.Init()
+}
+
+// NewUserFromYAML reads the Name and Key from YAML instead of passing.
+// See NewUser.
+func NewUserFromYAML(r io.Reader) (*User, error) {
+	u := new(User)
+	byt, err := io.ReadAll(r)
 	if err != nil {
-		return u, err
+		return nil, err
 	}
-	return u, nil
+	err = yaml.Unmarshal(byt, u)
+	if err != nil {
+		return nil, err
+	}
+	return u, u.Init()
+}
+
+// NewUserFromJSON reads the Name and Key from JSON instead of passing.
+// See NewUser.
+func NewUserFromJSON(r io.Reader) (*User, error) {
+	u := new(User)
+	byt, err := io.ReadAll(r)
+	if err != nil {
+		return nil, err
+	}
+	err = json.Unmarshal(byt, u)
+	if err != nil {
+		return nil, err
+	}
+	return u, u.Init()
+}
+
+// Init sets the internal Signer() by parsing the Key field returning
+// any error encountered.
+func (u *User) Init() error {
+	var err error
+	u.signer, err = ssh.ParsePrivateKey([]byte(u.Key))
+	return err
 }
