@@ -20,6 +20,14 @@ type User struct {
 // called.
 func (u User) Signer() ssh.Signer { return u.signer }
 
+// Init sets the internal Signer() by parsing the Key field returning
+// any error encountered.
+func (u *User) Init() error {
+	var err error
+	u.signer, err = ssh.ParsePrivateKey([]byte(u.Key))
+	return err
+}
+
 // JSON is a convenience method for marshaling as JSON string.
 // Marshaling errors return a "null" string.
 func (u User) JSON() string {
@@ -51,7 +59,7 @@ func NewUser(name, key string) (*User, error) {
 }
 
 // NewUserFromYAML reads the Name and Key from YAML instead of passing.
-// See NewUser.
+// See NewUser. ReadAll is used.
 func NewUserFromYAML(r io.Reader) (*User, error) {
 	u := new(User)
 	byt, err := io.ReadAll(r)
@@ -66,7 +74,7 @@ func NewUserFromYAML(r io.Reader) (*User, error) {
 }
 
 // NewUserFromJSON reads the Name and Key from JSON instead of passing.
-// See NewUser.
+// See NewUser. ReadAll is used.
 func NewUserFromJSON(r io.Reader) (*User, error) {
 	u := new(User)
 	byt, err := io.ReadAll(r)
@@ -78,12 +86,4 @@ func NewUserFromJSON(r io.Reader) (*User, error) {
 		return nil, err
 	}
 	return u, u.Init()
-}
-
-// Init sets the internal Signer() by parsing the Key field returning
-// any error encountered.
-func (u *User) Init() error {
-	var err error
-	u.signer, err = ssh.ParsePrivateKey([]byte(u.Key))
-	return err
 }
