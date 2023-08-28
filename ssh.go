@@ -289,7 +289,7 @@ func (c *Controller) RandomClient() *Client {
 // [Client.Connected] is set to false and the next client in the
 // [Clients] order is attempted. Then client producing the error has
 // [Client.Connect] called in a separate goroutine (which, if successful,
-// restores its connected status to true). If none of the clients are
+// restores its [Client.Connected] status to true). If none of the clients are
 // connected then an [AllUnavailable] error is returned.
 func (c *Controller) RunOnAny(cmd, stdin string) (stdout, stderr string, err error) {
 TOP:
