@@ -123,16 +123,16 @@ type Client struct {
 
 // SSHClient returns a pointer to the internal ssh.Client used for all
 // connections and sessions. Only set after first call to Connect.
-func (c Client) SSHClient() *ssh.Client { return c.sshclient }
+func (c *Client) SSHClient() *ssh.Client { return c.sshclient }
 
 // Connected returns the last connection state of the internal SSH
 // client. This is set to true on Connect. This does not guarantee that
 // the current connection is still valid, just the last attempt.
-func (c Client) Connected() bool { return c.connected }
+func (c *Client) Connected() bool { return c.connected }
 
 // LastError returns the last error (if any) from an attempt to Connect.
 // When set Connected is guaranteed to return false.
-func (c Client) LastError() error { return c.lasterror }
+func (c *Client) LastError() error { return c.lasterror }
 
 // Addr returns network address suitable for use in TCP/IP connection
 // strings. If the Port and Host are zero values returns empty host,
