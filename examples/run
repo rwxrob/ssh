@@ -1,7 +1,11 @@
 #!/usr/bin/bash
 
-x.image () {
-	podman build -t ssh-server containers
+x.build-server-image () {
+	podman build -t ssh-server server
+}
+
+x.build-client-image () {
+	podman build -t ssh-client client
 }
 
 x.clean () {
@@ -9,7 +13,7 @@ x.clean () {
 	podman rmi ssh-server
 }
 
-x.run () {
+x.start-servers () {
   for i in {1..3}; do
     if [[ -z "$(podman ps -q --filter "name=ssh-server$i")" ]]; then
       podman run -d -p "222$i:22" --rm --name "ssh-server$i" \
@@ -18,15 +22,16 @@ x.run () {
   done
 }
 
-x.stop () {
+x.stop-servers () {
   for i in {1..3}; do
     podman stop "ssh-server$i"
   done
 }
 
-x.check () {
+x.check-servers () {
+  [[ -z "$BUILDIP" ]] && echo '$BUILDIP' required && return 1
   for i in {1..3}; do
-    ssh localhost -p "222$i" hostname
+    podman run -it --rm ssh-client ssh "user@$BUILDIP" -p "222$i" -o StrictHostKeyChecking=no -i /home/user/.ssh/user hostname
   done
 }
 
