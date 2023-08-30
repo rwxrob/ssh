@@ -1,11 +1,16 @@
 #!/usr/bin/bash
 
-x.build-server-image () {
-	podman build -t ssh-server server
+x.images () {
+  x.client
+  x.server
 }
 
-x.build-client-image () {
-	podman build -t ssh-client client
+x.server () {
+	podman build -t ssh-server testdata/ssh-server
+}
+
+x.client () {
+	podman build -t ssh-client .
 }
 
 x.clean () {
@@ -13,26 +18,41 @@ x.clean () {
 	podman rmi ssh-server
 }
 
-x.start-servers () {
+x.start-ssh-server () {
+  [[ -z "$1" ]] && echo "missing server number" && return 1
+  podman run -d -p "222$1:22" --rm --name "ssh-server$1" \
+    --hostname "ssh-server$1" ssh-server
+}
+
+x.stop-ssh-server () {
+  [[ -z "$1" ]] && echo "missing server number" && return 1
+  podman stop "ssh-server$1"
+}
+
+x.start-ssh-servers () {
   for i in {1..3}; do
     if [[ -z "$(podman ps -q --filter "name=ssh-server$i")" ]]; then
-      podman run -d -p "222$i:22" --rm --name "ssh-server$i" \
-        --hostname "ssh-server$i" ssh-server
+      x.start-ssh-server "$i"
     fi
   done
 }
 
-x.stop-servers () {
+x.stop-ssh-servers () {
   for i in {1..3}; do
-    podman stop "ssh-server$i"
+    x.stop-ssh-server "$i"
   done
 }
 
-x.check-servers () {
-  [[ -z "$BUILDIP" ]] && echo '$BUILDIP' required && return 1
+x.check-ssh-servers () {
+  [[ -z "$RUNONANY_TARGET" ]] && echo '$RUNONANY_TARGET' required && return 1
   for i in {1..3}; do
-    podman run -it --rm ssh-client ssh "user@$BUILDIP" -p "222$i" -o StrictHostKeyChecking=no -i /home/user/.ssh/user hostname
+    podman run -it --rm ssh-client ssh "user@$RUNONANY_TARGET" -p "222$i" -o StrictHostKeyChecking=no -i /home/user/.ssh/user hostname
   done
+}
+
+x.watch-client-runonany () {
+  [[ -z "$RUNONANY_TARGET" ]] && echo '$RUNONANY_TARGET' required && return 1
+  podman run -it --rm -e RUNONANY_TARGET="$RUNONANY_TARGET" ssh-client
 }
 
 # --------------------- completion and delegation --------------------

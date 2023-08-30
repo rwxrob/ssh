@@ -6,7 +6,9 @@ coordinate operations on multiple targets.
 package ssh
 
 import (
+	"bytes"
 	"fmt"
+	"log"
 	"math/rand"
 	"net"
 	"strings"
@@ -144,6 +146,16 @@ func (c Client) Addr() string {
 	return fmt.Sprintf("%v:%v", c.Host.Addr, c.Port)
 }
 
+// Dest returns the Addr with the [User.Name] prepended with an at (@)
+// sign (if assigned).
+func (c Client) Dest() string {
+	it := c.Addr()
+	if c.User != nil && len(c.User.Name) > 0 {
+		it = c.User.Name + `@` + it
+	}
+	return it
+}
+
 // Connect creates a new ssh.Client using the [Client.Addr] and caches
 // it internally (see [SSHClient]). If [Client.Timeout] is zero uses
 // [ssh.DefaultTCPTimeout]. If [Client.Port] is zero uses
@@ -188,7 +200,7 @@ func (c *Client) Connect() error {
 // a timed-out connection or one that has been closed for any other
 // reason.) It is the responsibility of the called to respond to such
 // errors according to controller policy and associated method calls.
-func (c *Client) Run(cmd, stdin string) (stdout, stderr string, err error) {
+func (c *Client) Run(cmd string, stdin []byte) (stdout, stderr string, err error) {
 	if c.sshclient == nil {
 		err = c.Connect()
 		if err != nil {
@@ -200,8 +212,8 @@ func (c *Client) Run(cmd, stdin string) (stdout, stderr string, err error) {
 	if err != nil {
 		return
 	}
-	if stdin != "" {
-		sess.Stdin = strings.NewReader(stdin)
+	if len(stdin) > 0 {
+		sess.Stdin = bytes.NewReader(stdin)
 	}
 	_out := new(strings.Builder)
 	_err := new(strings.Builder)
@@ -239,6 +251,12 @@ func (c *Controller) Init(clients ...*Client) *Controller {
 	}
 	c.Clients = make([]*Client, 0)
 	return c
+}
+
+func (c *Controller) LogStatus() {
+	for _, c := range c.Clients {
+		log.Printf("%v %v %v\n", c.Dest(), c.connected, c.lasterror)
+	}
 }
 
 // Connect synchronously calls Connect on all Clients in order ensuring that all
@@ -291,7 +309,7 @@ func (c *Controller) RandomClient() *Client {
 // [Client.Connect] called in a separate goroutine (which, if successful,
 // restores its [Client.Connected] status to true). If none of the clients are
 // connected then an [AllUnavailable] error is returned.
-func (c *Controller) RunOnAny(cmd, stdin string) (stdout, stderr string, err error) {
+func (c *Controller) RunOnAny(cmd string, stdin []byte) (stdout, stderr string, err error) {
 TOP:
 	client := c.RandomClient()
 	if client == nil {
