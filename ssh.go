@@ -1,340 +1,326 @@
+/*
+Package ssh is simplified encapsulation of the standard x/crypto/ssh
+package with reasonable defaults and multi-client controller that can
+coordinate operations on multiple targets.
+*/
 package ssh
 
 import (
+	"bytes"
 	"fmt"
 	"log"
 	"math/rand"
+	"net"
 	"strings"
 	"time"
 
 	"golang.org/x/crypto/ssh"
 )
 
-// TCPTimeout is the default number of seconds to wait to complete a TCP
+// DefaultPort for SSH connetions.
+var DefaultPort = 22
+
+// DefaultTCPTimeout is the default number of seconds to wait to complete a TCP
 // connection.
-var TCPTimeout = 300 * time.Second
+var DefaultTCPTimeout = 300 * time.Second
 
-var SafeDelim = "🤦"
+// ------------------------------ Errors ------------------------------
 
-var clients = map[string]*ssh.Client{}
+type AllUnavailable struct{}
 
-// Run wraps the ssh.Session.Run command with sensible, stand-alone
-// defaults. This function has no dependencies on any underlying ssh
-// host installation making it idea for light-weight, remote ssh calls.
-//
-// Run combines several steps. First, a client secure shell connection
-// is Dialed to the target (user@host:PORT) using the private key of the
-// local user (ukey) and public host key in authorized_keys format (or nil
-// to skip). Run then attempts to create a Session
-// calling Run on it to execute the passed cmd feeding it any standard
-// input (in) provided.  The standard output, standard error are then
-// buffered and returned as strings. The exit value is captured in err
-// for any exit code other than 0. See the ssh.Session.Run method for
-// more information.
-//
-// Note that there are no limitations on the size of input and output
-// meaning Run should only be used when calling remote commands that can
-// be trusted not to produce too much output.
-func Run(target string, ukey, hkey []byte, cmd, in string) (stdout, stderr string, err error) {
-
-	t := strings.Split(target, "@")
-	if len(t) != 2 {
-		err = fmt.Errorf(`invalid target: %q`, target)
-		return
-	}
-	user := t[0]
-	addr := t[1]
-
-	signer, err := ssh.ParsePrivateKey(ukey)
-	if err != nil {
-		return
-	}
-
-	var callback ssh.HostKeyCallback
-	var hostkey, hostpub ssh.PublicKey
-
-	if hkey != nil {
-
-		hostkey, _, _, _, err = ssh.ParseAuthorizedKey(hkey)
-		if err != nil {
-			return
-		}
-
-		hostpub, err = ssh.ParsePublicKey(hostkey.Marshal())
-		if err != nil {
-			return
-		}
-
-		callback = ssh.FixedHostKey(hostpub)
-
-	} else {
-
-		callback = ssh.InsecureIgnoreHostKey()
-
-	}
-
-	var tried bool
-	var client *ssh.Client
-
-GETCLIENT:
-	client, cached := clients[target]
-	if !cached {
-		client, err = ssh.Dial(`tcp`, addr, &ssh.ClientConfig{
-			User:            user,
-			Auth:            []ssh.AuthMethod{ssh.PublicKeys(signer)},
-			HostKeyCallback: callback,
-			Timeout:         TCPTimeout,
-		})
-		if err != nil {
-			return
-		}
-		clients[target] = client
-	}
-
-	sess, err := client.NewSession()
-	if sess != nil {
-		defer sess.Close()
-	}
-	if err != nil {
-		if !tried {
-			delete(clients, target)
-			tried = true
-			goto GETCLIENT
-		}
-		return
-	}
-
-	if in != "" {
-		sess.Stdin = strings.NewReader(in)
-	}
-
-	_out := new(strings.Builder)
-	_err := new(strings.Builder)
-	sess.Stdout = _out
-	sess.Stderr = _err
-
-	err = sess.Run(cmd)
-	stdout = _out.String()
-	stderr = _err.String()
-
-	return
-
-}
-
-func RunSafe(target string, ukey, hkey []byte, cmd string, args ...string) (stdout, stderr string, err error) {
-	safelist := append([]string{cmd}, args...)
-	_cmd := strings.Join(safelist, SafeDelim)
-	return Run(target, ukey, hkey, _cmd, ``)
-}
+func (AllUnavailable) Error() string { return `all SSH client targets are unavailable` }
 
 // ------------------------------- User -------------------------------
 
-// we use an interface for flexibility and to allow the work to create
-// a signer to only be needed once upon creation
-
+// User represents a single SSH user on the target host authenticated by
+// a private key. A User may be safely marshaled/unmarshaled from
+// JSON/YAML.
 type User struct {
-	Name   string
-	Key    []byte // original pemkey
-	Signer ssh.Signer
+
+	// Name of user on target system hosting SSH server.
+	Name string
+
+	// Private key in PEM format.
+	Key string
 }
 
-func NewUser(name string, pemkey []byte) (*User, error) {
-	var err error
-	u := new(User)
-	u.Name = name
-	u.Key = pemkey
-	u.Signer, err = ssh.ParsePrivateKey(pemkey)
-	if err != nil {
-		return u, err
-	}
-	return u, nil
+// Signer trims and parses then content of Key and returns a new
+// [crypto/ssh.Signer].
+func (u User) Signer() (ssh.Signer, error) {
+	trimmed := []byte(strings.TrimSpace(u.Key))
+	return ssh.ParsePrivateKey(trimmed)
 }
 
 // ------------------------------- Host -------------------------------
 
-// we use an interface for flexibility and to allow the work to create
-// a signer to only be needed once upon creation
-
+// Host represents a single host on the network that is hosting
+// a secure shell server. A Host may be safely marshaled/unmarshaled
+// to/from JSON/YAML.
 type Host struct {
-	Addr    string        // name or IP
-	Auth    []byte        // authorized_hosts format
-	Netkey  ssh.PublicKey // RFC 4235, section 6.6
-	Pubkey  ssh.PublicKey // suitable for ssh.FixedHostkey
-	Comment string        // authorized_hosts comment
-	Options []string      // authorized_hosts options
-	Client  *ssh.Client   // last (cached) client connection
+
+	// Network host name or IP address (required).
+	Addr string
+
+	// Complete line taken in the authorized_hosts format (optional). When
+	// included triggers returning ssh.FixedHostKey(pubkey) for
+	// KeyCallback.
+	Auth string
 }
 
-func NewHost(addr string, authkey []byte) (*Host, error) {
-	var err error
-	host := new(Host)
-	host.Addr = addr
-	host.Auth = authkey
-
-	if authkey == nil {
-		return host, nil
+// KeyCallback returns ssh.FixedHostKey(pubkey) where pubkey is derived
+// from the Auth string if Auth is not nil. Otherwise, returns
+// ssh.InsecureIgnoreHostKey().
+func (h Host) KeyCallback() (ssh.HostKeyCallback, error) {
+	auth := strings.TrimSpace(h.Auth)
+	if len(auth) == 0 {
+		return ssh.InsecureIgnoreHostKey(), nil
 	}
-
-	host.Netkey, host.Comment, host.Options, _, err = ssh.ParseAuthorizedKey(authkey)
+	// Netkey is an RFC 4234 (section 6.6) which is an ssh.PublicKey
+	// but in RFC format (which fails for ssh.FixedHostKey).
+	netkey, _, _, _, err := ssh.ParseAuthorizedKey([]byte(auth))
 	if err != nil {
-		return host, err
+		return nil, err
 	}
-
-	// required since host.net (also ssh.PublicKey) is in RFC format
-	// (which fails for ssh.FixedHostKey)
-
-	host.Pubkey, err = ssh.ParsePublicKey(host.Netkey.Marshal())
+	pubkey, err := ssh.ParsePublicKey(netkey.Marshal())
 	if err != nil {
-		return host, err
+		return nil, err
 	}
-
-	return host, nil
+	return ssh.FixedHostKey(pubkey), nil
 }
 
-// -------------------------- MultiHostClient -------------------------
+// ------------------------------ Client ------------------------------
 
-type MultiHostClient struct {
-	User      *User         // user credentials to use
-	Hosts     []*Host       // hosts to Dial
-	Timeout   time.Duration // TCP/IP timeout (not session)
-	Sleep     time.Duration // time to sleep between Dial calls
-	Attempts  int           // number of attempts (0 same as 1)
-	SafeDelim string        // RunSafe delimiter (default pkg SafeDelim)
+// Client encapsulates an internal ssh.Client and associates a single
+// user, host, and port number to target for specific ssh server connection
+// adding a Connect method which implicitly dials up a connection
+// setting Connected() and internally caching the client as SSHClient().
+// Client may be safely marshaled to/from YAML/JSON directly.
+type Client struct {
 
-	last int
+	// Host contains the host name or IP address along with any
+	// authorization credentials and other data that would normally be
+	// contained in authorized_hosts.
+	Host *Host
+
+	// Port is the port the ssh server is listening on on target server.
+	// If unset DefaultPort is used.
+	Port int
+
+	// User contains the name of the user on target server and contains
+	// the PEM private key authentication data as well.
+	User *User
+
+	// Timeout is the default number of seconds to wait to complete a TCP
+	// connection. If unset DefaultTCPTimeout is used.
+	Timeout time.Duration
+
+	// Comment allows information comments about a specific client
+	// connection to be persisted with the configuration data.
+	Comment string
+
+	sshclient *ssh.Client
+	connected bool
+	lasterror error
 }
 
-func (c MultiHostClient) assert() {
-	switch {
-	case c.User == nil:
-		panic(`undefined User`)
-	case c.User.Name == "":
-		panic(`undefined User.Name`)
-	case c.User.Signer == nil:
-		panic(`undefined User.Signer`)
-	case c.Hosts == nil:
-		panic(`undefined Hosts`)
-	case c.Timeout == 0:
-		panic(`Timeout cannot be 0`)
-	case c.Attempts == 0:
-		panic(`Attempts cannot be 0`)
+// SSHClient returns a pointer to the internal ssh.Client used for all
+// connections and sessions. Only set after first call to Connect.
+func (c *Client) SSHClient() *ssh.Client { return c.sshclient }
+
+// Connected returns the last connection state of the internal SSH
+// client. This is set to true on Connect. This does not guarantee that
+// the current connection is still valid, just the last attempt.
+func (c *Client) Connected() bool { return c.connected }
+
+// LastError returns the last error (if any) from an attempt to Connect.
+// When set Connected is guaranteed to return false.
+func (c *Client) LastError() error { return c.lasterror }
+
+// Addr returns network address suitable for use in TCP/IP connection
+// strings. If the Port and Host are zero values returns empty host,
+// colon, and DefaultPort (without setting it).
+func (c Client) Addr() string {
+	if c.Port == 0 {
+		c.Port = DefaultPort
 	}
+	return fmt.Sprintf("%v:%v", c.Host.Addr, c.Port)
 }
 
-// Dial attempts to dial a random host from Hosts and rotates through
-// all hosts until one responds or all hosts have been tried. Reuses a
-// cached Host.Client if available to prevent creating new TCP/IP
-// connections if not needed. The first host to respond to Dial is
-// used.  Panics if any User, Hosts, Timeout, or Attempts is undefined.
-func (c *MultiHostClient) Dial() (*ssh.Client, error) {
-	c.assert()
+// Dest returns the Addr with the [User.Name] prepended with an at (@)
+// sign (if assigned).
+func (c Client) Dest() string {
+	it := c.Addr()
+	if c.User != nil && len(c.User.Name) > 0 {
+		it = c.User.Name + `@` + it
+	}
+	return it
+}
 
-	rand.Seed(time.Now().UnixNano())
-	c.last = rand.Intn(len(c.Hosts))
-	host := c.Hosts[c.last]
+// Connect creates a new ssh.Client using the [Client.Addr] and caches
+// it internally (see [SSHClient]). If [Client.Timeout] is zero uses
+// [ssh.DefaultTCPTimeout]. If [Client.Port] is zero uses
+// [ssh.DefaultPort]. Always reinitializes a new connection even if
+// [Connected] is true.  Also see [User.Signer] and [Host.KeyCallback].
+// If an attempted connection fails sets [Client.Connected] to false and
+// assigns and returns [LastError].
+func (c *Client) Connect() error {
+	signer, err := c.User.Signer()
+	if err != nil {
+		return err
+	}
+	callback, err := c.Host.KeyCallback()
+	if err != nil {
+		return err
+	}
+	var timeout time.Duration
+	if c.Timeout == 0 {
+		c.Timeout = DefaultTCPTimeout
+	}
+	c.sshclient, err = ssh.Dial(`tcp`, c.Addr(), &ssh.ClientConfig{
+		User:            c.User.Name,
+		Auth:            []ssh.AuthMethod{ssh.PublicKeys(signer)},
+		HostKeyCallback: callback,
+		Timeout:         timeout,
+	})
+	if err == nil {
+		c.connected = true
+	} else {
+		c.connected = false
+		c.lasterror = err
+	}
+	return err
+}
 
-	var err error
-	var client *ssh.Client
-	var callback ssh.HostKeyCallback
-
-	for n := 0; n < len(c.Hosts); n++ {
-
-		if host.Auth == nil {
-			callback = ssh.InsecureIgnoreHostKey()
-		} else {
-			callback = ssh.FixedHostKey(host.Pubkey)
+// Run sends the command with optional standard input to the currently
+// open client SSH target as a new ssh.Session. If the SSH connection
+// has not yet been established (c.Connected is false) [Connect] is
+// called to establish a new client connection. Run returns an error if
+// one is generated by the [ssh/Session.Run] call or if a new session
+// could not be created (including attempting a new session on
+// a timed-out connection or one that has been closed for any other
+// reason.) It is the responsibility of the called to respond to such
+// errors according to controller policy and associated method calls.
+func (c *Client) Run(cmd string, stdin []byte) (stdout, stderr string, err error) {
+	if c.sshclient == nil {
+		err = c.Connect()
+		if err != nil {
+			return
 		}
-
-		client, err = ssh.Dial(`tcp`, host.Addr, &ssh.ClientConfig{
-			User:            c.User.Name,
-			Auth:            []ssh.AuthMethod{ssh.PublicKeys(c.User.Signer)},
-			HostKeyCallback: callback,
-			Timeout:         c.Timeout,
-		})
-
-		if err == nil {
-			return client, nil
-		}
-
-		// error during dial
-		log.Print(err)
-
-		if c.last == len(c.Hosts)-1 {
-			c.last = 0
-		} else {
-			c.last++
-		}
-
-		host = c.Hosts[c.last]
 	}
-
-	return nil, err
-
-}
-
-// DialUntil attempts to Dial Attempts number of times waiting in
-// between for Sleep seconds in between each attempt.
-func (c *MultiHostClient) DialUntil() (client *ssh.Client, err error) {
-	n := 1
-	for {
-		client, err = c.Dial()
-		if client != nil || n >= c.Attempts {
-			break
-		}
-		n++
-		time.Sleep(c.Sleep)
-	}
-	return
-}
-
-// Run gets a client connection with DialUntil and then runs the command
-// (with optional stdin) as a Session on the remote host capturing the
-// stdout, stderr as strings and returning the exit value in the error
-// (see ssh.Session.Run). Note that no sanity checking is performed on
-// the command passed and that most SSH servers will pass the cmd to the
-// shell assigned to the remote user. This means that if semicolon where
-// passed within the cmd string unexpected behavior could result.
-// Therefore, it is critical that the cmd string passed be rigorously
-// validated (usually through a very strict regular expression match) to
-// prevent shell injection vulnerabilities. Another preventative
-// measure is to provide a rudimentary shell for the remote user that
-// disallows any shell expansion of any kind (effectively limiting all
-// remote commands to their exec syscall equivalents).
-func (c *MultiHostClient) Run(cmd, stdin string) (stdout, stderr string, err error) {
-
-	client, err := c.DialUntil()
-	if client == nil {
-		err = fmt.Errorf(`failed to get client connection`)
-		return
-	}
-
 	var sess *ssh.Session
-	sess, err = client.NewSession()
+	sess, err = c.sshclient.NewSession()
 	if err != nil {
 		return
 	}
-
-	if stdin != "" {
-		sess.Stdin = strings.NewReader(stdin)
+	if len(stdin) > 0 {
+		sess.Stdin = bytes.NewReader(stdin)
 	}
-
 	_out := new(strings.Builder)
 	_err := new(strings.Builder)
 	sess.Stdout = _out
 	sess.Stderr = _err
-
-	err = sess.Run(cmd)
+	sess.Run(cmd)
 	stdout = _out.String()
 	stderr = _err.String()
-
+	sess.Close()
 	return
 }
 
-func (c MultiHostClient) RunSafe(cmd string, args ...string) (stdout, stderr string, err error) {
-	safelist := append([]string{cmd}, args...)
-	if c.SafeDelim == "" {
-		c.SafeDelim = SafeDelim
+// ---------------------------- Controller ----------------------------
+
+// Controller is responsible for coordinating work requests destined for
+// the target ssh servers as contained in its list of Clients.
+// A Controller zero value (one with nil clients list) is safe to use
+// for all methods but [Init] can be called to add clients as
+// a convenience.
+//
+//	ctl := new(ssh.Controller).Init(cl1,cl2)
+type Controller struct {
+	Clients []*Client
+}
+
+// Init returns a pointer to a Controller with the Clients list
+// initialized. Init can be called later to set the internal Client list
+// to a newly created one. When called on a Controller with an existing
+// Clients list replaces it with a new list. If no clients are passed,
+// simply initializes the internal Clients list to an empty list.
+func (c *Controller) Init(clients ...*Client) *Controller {
+	if len(clients) > 0 {
+		c.Clients = clients
+		return c
 	}
-	_cmd := strings.Join(safelist, c.SafeDelim)
-	return c.Run(_cmd, ``)
+	c.Clients = make([]*Client, 0)
+	return c
+}
+
+func (c *Controller) LogStatus() {
+	for _, c := range c.Clients {
+		log.Printf("%v %v %v\n", c.Dest(), c.connected, c.lasterror)
+	}
+}
+
+// Connect synchronously calls Connect on all Clients in order ensuring that all
+// have successfully connected before returning. No
+// attempt at error checking for successful connections is attempted but
+// the [Client.Connected] and [Client.LastError] can
+// be checked when needed. A reference to self is returned as
+// convenience.
+func (c *Controller) Connect() *Controller {
+	if c.Clients == nil {
+		return nil
+	}
+	for _, client := range c.Clients {
+		client.Connect()
+	}
+	return c
+}
+
+// RandomClient returns a random active client from the Clients list
+// skipping any that are not connected. Returns nil if no connected
+// clients are available.
+func (c *Controller) RandomClient() *Client {
+	var tried int
+	count := len(c.Clients)
+	if count == 0 {
+		return nil
+	}
+	n := rand.Intn(count)
+	for {
+		client := c.Clients[n]
+		if client.connected {
+			return client
+		}
+		tried += 1
+		if tried > count {
+			return nil
+		}
+		n += 1
+		if n >= count {
+			n = 0
+		}
+	}
+	return nil
+}
+
+// RunOnAny calls [Client.Run] on a random client from the [Clients]
+// list.  If error returned is of type [net.OpError] the
+// [Client.Connected] is set to false and the next client in the
+// [Clients] order is attempted. Then client producing the error has
+// [Client.Connect] called in a separate goroutine (which, if successful,
+// restores its [Client.Connected] status to true). If none of the clients are
+// connected then an [AllUnavailable] error is returned.
+func (c *Controller) RunOnAny(cmd string, stdin []byte) (stdout, stderr string, err error) {
+TOP:
+	client := c.RandomClient()
+	if client == nil {
+		err = AllUnavailable{}
+		return
+	}
+	stdout, stderr, err = client.Run(cmd, stdin)
+	if _, is := err.(*net.OpError); is {
+		client.connected = false
+		go client.Connect()
+		goto TOP
+	}
+	return
 }

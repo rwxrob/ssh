@@ -1,0 +1,7 @@
+#!/usr/bin/bash
+
+while true; do
+  clear
+  runonany hostname <<< "some stdin"
+  sleep 2
+done

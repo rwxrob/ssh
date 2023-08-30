@@ -1,0 +1,18 @@
+FROM docker.io/golang:latest AS build-env
+COPY ../../../.. /ssh
+WORKDIR /ssh
+RUN ls
+RUN go build
+
+FROM ubuntu:latest
+ENV DEBIAN_FRONTEND=noninteractive
+ENV TZ=America/New_York
+RUN apt-get update && apt-get install -y openssh-client
+COPY --from=build-env /runonany/runonany /
+ADD runonany.yaml /
+RUN addgroup user && adduser user --ingroup user --disabled-password
+RUN mkdir -p /home/user/.ssh
+COPY keys/* /home/user/.ssh
+RUN chown user:user /home/user/.ssh
+COPY entrypoint /
+CMD /entrypoint
