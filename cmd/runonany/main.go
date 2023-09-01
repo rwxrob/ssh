@@ -15,7 +15,7 @@ func main() {
 
 	if !(len(os.Args) > 1) || os.Args[1] == `-h` {
 		log.SetFlags(0)
-		log.Fatal(`usage: runonany ARG ... < stdin`)
+		log.Fatal(`usage: runonany ARG ... < STDIN`)
 	}
 
 	// read the command and standard input to the binary

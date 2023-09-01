@@ -2,7 +2,7 @@
 
 [![GoDoc](https://godoc.org/github.com/rwxrob/ssh?status.svg)](https://godoc.org/github.com/rwxrob/ssh)
 [![License](https://img.shields.io/badge/license-Apache2-brightgreen.svg)](LICENSE)
-# Testable example
+example
 
 ## Testable `runasany` example
 
@@ -10,29 +10,10 @@ This directory also contains a testable example implementation of `ssh.RunOnAny`
 
 Here are the steps to conduct an interactive test. In this way, one can monitor the status of a given server and bring it up or down on demand and note how this affects the `ssh.Controller` (inside of `runonany`).
 
-### A note about `build` script
-
-The [`build`](build) bash script is designed to be used with simple bash tab completion. First add a `build` script like the following in your `PATH`.
+### Build the SSH server/client image
 
 ```sh
-#!/bin/sh
-exec ./build "$@"
-```
-
-If you prefer you can do the above with `./build` instead and avoid the script. This just avoids the anti-pattern of adding `./` to your `PATH`.
-
-Then add the following to `~/.bashrc`.
-
-```sh
-complete -C build build
-```
-
-### Build the SSH server image
-
-The [testdata/server](testdata/server) directory contains an `ssh-server` (`ubuntu:latest`) image used to bring up SSH servers on different ports. This directory contains everything for the `ssh-client` container image.
-
-```sh
-build server
+build image
 ```
 
 ### Start up the three SSH server containers
@@ -40,7 +21,7 @@ build server
 Then start the three servers listening on ports `2221-2223`.
 
 ```sh
-build start-ssh-servers
+build start-servers
 ```
 
 ### Set the `RUNONANY_TARGET` environment variable
@@ -74,26 +55,25 @@ ssh-server3
 
 Note that the primary distinction is the port number. These servers all share the same `user` and credentials. They even share the same `authorized_hosts` key (which we ignore here deliberately for testing).
 
-### Build and run `runonany` Go binary and `client` container
+### Watch `runonany` output
 
 The [`runonany`](cmd/runonany/main.go) binary is a simple program that encapsulates an `ssh.Controller` configured in the [`runonany.yaml`](testdata/runonany.yaml) YAML file.
 
 ```sh
-build client
-build watch-client-runonany
+build watch
 ```
 
 This will update every two seconds.
 
-## Interactively stop and start SSH server containers
+### Interactively stop and start SSH server containers
 
-The containerized `ssh-server` images can be stopped and started while monitoring the live status using commands similar to the following:
+The containers running as servers (see [`entrypoint`](entrypoint)) can be stopped and started while monitoring the live status using commands similar to the following:
 
 ```sh
-build stop-ssh-server 2
-build start-ssh-server 2
-build stop-ssh-servers
-build start-ssh-servers
+build stop-server 2
+build start-server 2
+build stop-servers
+build start-servers
 ```
 
 It is useful to do these commands from one TMUX pane while running `build watch-client-runonany` from another to see the change in `ssh.Controller.Clients` status.
@@ -107,3 +87,13 @@ Here are some things to validate:
 * Start one server after stopping and note recovery.
 * Start two servers and note recovery.
 * Start all servers and note recovery.
+
+### Do other things from client container
+
+If you prefer to play around on the client container itself just override the `--entrypoint`.
+
+```sh
+podman run -it --rm  --entrypoint bash runonany:latest
+```
+
+This will give you a root login.
