@@ -230,7 +230,7 @@ host:
 	}
 
 	// basic command (no stdin)
-	stdout, stderr, err := client.Run(`printf hello`, ``)
+	stdout, stderr, err := client.Run(`printf hello`, nil)
 	fmt.Println(`-----`)
 	fmt.Println(stdout)
 	fmt.Println(stderr)
@@ -247,7 +247,7 @@ host:
 	fmt.Println(stdout)
 	fmt.Println(stderr)
 
-	// Output:
+	/// Output:
 	// -----
 	// hello
 	//

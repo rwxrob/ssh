@@ -8,6 +8,7 @@ package ssh
 import (
 	"bytes"
 	"fmt"
+	"io"
 	"log"
 	"math/rand"
 	"net"
@@ -30,6 +31,10 @@ type AllUnavailable struct{}
 
 func (AllUnavailable) Error() string { return `all SSH client targets are unavailable` }
 
+type CommandLineMissing struct{}
+
+func (CommandLineMissing) Error() string { return `missing argument containing command line` }
+
 // ------------------------------- User -------------------------------
 
 // User represents a single SSH user on the target host authenticated by
@@ -46,7 +51,7 @@ type User struct {
 
 // Signer trims and parses then content of Key and returns a new
 // [crypto/ssh.Signer].
-func (u User) Signer() (ssh.Signer, error) {
+func (u *User) Signer() (ssh.Signer, error) {
 	trimmed := []byte(strings.TrimSpace(u.Key))
 	return ssh.ParsePrivateKey(trimmed)
 }
@@ -70,7 +75,7 @@ type Host struct {
 // KeyCallback returns ssh.FixedHostKey(pubkey) where pubkey is derived
 // from the Auth string if Auth is not nil. Otherwise, returns
 // ssh.InsecureIgnoreHostKey().
-func (h Host) KeyCallback() (ssh.HostKeyCallback, error) {
+func (h *Host) KeyCallback() (ssh.HostKeyCallback, error) {
 	auth := strings.TrimSpace(h.Auth)
 	if len(auth) == 0 {
 		return ssh.InsecureIgnoreHostKey(), nil
@@ -139,16 +144,17 @@ func (c *Client) LastError() error { return c.lasterror }
 // Addr returns network address suitable for use in TCP/IP connection
 // strings. If the Port and Host are zero values returns empty host,
 // colon, and DefaultPort (without setting it).
-func (c Client) Addr() string {
-	if c.Port == 0 {
-		c.Port = DefaultPort
+func (c *Client) Addr() string {
+	port := DefaultPort
+	if c.Port > 0 {
+		port = c.Port
 	}
-	return fmt.Sprintf("%v:%v", c.Host.Addr, c.Port)
+	return fmt.Sprintf("%v:%v", c.Host.Addr, port)
 }
 
 // Dest returns the Addr with the [User.Name] prepended with an at (@)
 // sign (if assigned).
-func (c Client) Dest() string {
+func (c *Client) Dest() string {
 	it := c.Addr()
 	if c.User != nil && len(c.User.Name) > 0 {
 		it = c.User.Name + `@` + it
@@ -172,9 +178,9 @@ func (c *Client) Connect() error {
 	if err != nil {
 		return err
 	}
-	var timeout time.Duration
-	if c.Timeout == 0 {
-		c.Timeout = DefaultTCPTimeout
+	timeout := DefaultTCPTimeout
+	if c.Timeout != 0 {
+		timeout = c.Timeout
 	}
 	c.sshclient, err = ssh.Dial(`tcp`, c.Addr(), &ssh.ClientConfig{
 		User:            c.User.Name,
@@ -200,7 +206,7 @@ func (c *Client) Connect() error {
 // a timed-out connection or one that has been closed for any other
 // reason.) It is the responsibility of the called to respond to such
 // errors according to controller policy and associated method calls.
-func (c *Client) Run(cmd string, stdin []byte) (stdout, stderr string, err error) {
+func (c *Client) Run(cmd string, stdin any) (stdout, stderr string, err error) {
 	if c.sshclient == nil {
 		err = c.Connect()
 		if err != nil {
@@ -212,8 +218,15 @@ func (c *Client) Run(cmd string, stdin []byte) (stdout, stderr string, err error
 	if err != nil {
 		return
 	}
-	if len(stdin) > 0 {
-		sess.Stdin = bytes.NewReader(stdin)
+	if stdin != nil {
+		switch v := stdin.(type) {
+		case io.Reader:
+			sess.Stdin = v
+		case []byte:
+			sess.Stdin = bytes.NewReader(v)
+		case string:
+			sess.Stdin = strings.NewReader(v)
+		}
 	}
 	_out := new(strings.Builder)
 	_err := new(strings.Builder)
@@ -302,14 +315,63 @@ func (c *Controller) RandomClient() *Client {
 	return nil
 }
 
+func strFrom(this any) string {
+	switch v := this.(type) {
+	case string:
+		return v
+	case []byte:
+		return string(v)
+	case io.Reader:
+		byt, err := io.ReadAll(v)
+		if err != nil {
+			return ``
+		}
+		return string(byt)
+	default:
+		return ``
+	}
+}
+
+func bytFrom(this any) []byte {
+	switch v := this.(type) {
+	case string:
+		return []byte(v)
+	case []byte:
+		return v
+	case io.Reader:
+		byt, err := io.ReadAll(v)
+		if err != nil {
+			return nil
+		}
+		return byt
+	default:
+		return nil
+	}
+}
+
 // RunOnAny calls [Client.Run] on a random client from the [Clients]
 // list.  If error returned is of type [net.OpError] the
 // [Client.Connected] is set to false and the next client in the
 // [Clients] order is attempted. Then client producing the error has
 // [Client.Connect] called in a separate goroutine (which, if successful,
 // restores its [Client.Connected] status to true). If none of the clients are
-// connected then an [AllUnavailable] error is returned.
-func (c *Controller) RunOnAny(cmd string, stdin []byte) (stdout, stderr string, err error) {
+// connected then an [AllUnavailable] error is returned. The first
+// argument is the command line to send and is always required and may be either a string or []byte
+// slice. The second argument is optional and is the standard input.
+// Either may be a string, []byte slice, or io.Reader (which will be
+// fully read).
+func (c *Controller) RunOnAny(args ...any) (stdout, stderr string, err error) {
+
+	if len(args) < 1 {
+		return ``, ``, CommandLineMissing{}
+	}
+	cmd := strFrom(args[0])
+
+	var stdin []byte
+	if len(args) > 1 {
+		stdin = bytFrom(args[1])
+	}
+
 TOP:
 	client := c.RandomClient()
 	if client == nil {
