@@ -372,17 +372,18 @@ func (c *Controller) RunOnAny(args ...any) (stdout, stderr string, err error) {
 		stdin = bytFrom(args[1])
 	}
 
-TOP:
 	client := c.RandomClient()
 	if client == nil {
 		err = AllUnavailable{}
 		return
 	}
+
 	stdout, stderr, err = client.Run(cmd, stdin)
 	if _, is := err.(*net.OpError); is {
 		client.connected = false
 		go client.Connect()
-		goto TOP
+		c.RunOnAny(args...)
 	}
+
 	return
 }

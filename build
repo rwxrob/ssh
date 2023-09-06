@@ -1,5 +1,33 @@
 #!/usr/bin/env bash
 
+read -r -d '' helptxt <<EOF
+
+This script is used for building and running a podman test container
+image locally.
+
+	help          - print this help message
+	image         - build the multi-use runonany image
+	clean         - stop the servers and remove runonany image
+	start-server  - start a single server (requires 1, 2, or 3)
+	start-servers - start all three servers (skip if started)
+	stop-server   - stop a single server (requires 1, 2, or 3)
+	stop-servers  - stop all three servers (takes a while)
+	check-servers - check all three servers with ssh
+	watch         - watch output of 'runonany hostname' on all
+
+Full documentation for how to run the tests is included in the
+README.md file.
+
+EOF
+
+# Functions that begin with "x." are automatically enabled
+# for completion for those that wish to enable it (see "completion and
+# delegation" within the script for details):
+
+x.help() {
+	echo "$helptxt"
+}
+
 x.image() {
 	podman build -t runonany .
 }
