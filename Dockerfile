@@ -2,10 +2,10 @@ FROM docker.io/golang:latest AS build-env
 COPY . /build
 WORKDIR /build
 RUN \
-  go mod init runonany &&\
-  go mod tidy &&\
+  go mod init github.com/rwxrob/ssh &&\
   go work init &&\
   go work use . &&\
+  go mod tidy &&\
   go build ./cmd/runonany
 
 FROM ubuntu:latest
