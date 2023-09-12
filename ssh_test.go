@@ -236,13 +236,13 @@ host:
 	fmt.Println(stderr)
 
 	// with stdin
-	stdout, stderr, _ = client.Run(`cat`, `i'm a cat`)
+	stdout, stderr, _ = client.Run(`cat`, []byte(`i'm a cat`))
 	fmt.Println(`-----`)
 	fmt.Println(stdout)
 	fmt.Println(stderr)
 
 	// with stderr
-	stdout, stderr, _ = client.Run(`ls notafile`, ``)
+	stdout, stderr, _ = client.Run(`ls notafile`, nil)
 	fmt.Println(`-----`)
 	fmt.Println(stdout)
 	fmt.Println(stderr)
@@ -374,7 +374,7 @@ clients:
 		fmt.Println(err)
 	}
 
-	stdin, _, _ := ctl.RunOnAny(`whoami`, ``)
+	stdin, _, _ := ctl.RunOnAny(`whoami`, nil)
 	fmt.Println(stdin)
 
 	/// Output:
@@ -431,7 +431,7 @@ clients:
 		fmt.Println(err)
 	}
 
-	stdin, _, _ := ctl.RunOnAny(`whoami`, ``)
+	stdin, _, _ := ctl.RunOnAny(`whoami`, nil)
 	fmt.Println(stdin)
 
 	// Output:
@@ -442,7 +442,7 @@ clients:
 func ExampleController_RunOnAny_no_Clients() {
 
 	ctl := new(ssh.Controller)
-	_, _, err := ctl.RunOnAny(`echo hello`, ``)
+	_, _, err := ctl.RunOnAny(`echo hello`, nil)
 	fmt.Println(err)
 
 	// Output:

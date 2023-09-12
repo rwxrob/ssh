@@ -8,7 +8,6 @@ package ssh
 import (
 	"bytes"
 	"fmt"
-	"io"
 	"log"
 	"math/rand"
 	"net"
@@ -206,7 +205,7 @@ func (c *Client) Connect() error {
 // a timed-out connection or one that has been closed for any other
 // reason.) It is the responsibility of the called to respond to such
 // errors according to controller policy and associated method calls.
-func (c *Client) Run(cmd string, stdin any) (stdout, stderr string, err error) {
+func (c *Client) Run(cmd string, stdin []byte) (stdout, stderr string, err error) {
 	if c.sshclient == nil {
 		err = c.Connect()
 		if err != nil {
@@ -218,15 +217,8 @@ func (c *Client) Run(cmd string, stdin any) (stdout, stderr string, err error) {
 	if err != nil {
 		return
 	}
-	if stdin != nil {
-		switch v := stdin.(type) {
-		case io.Reader:
-			sess.Stdin = v
-		case []byte:
-			sess.Stdin = bytes.NewReader(v)
-		case string:
-			sess.Stdin = strings.NewReader(v)
-		}
+	if len(stdin) > 0 {
+		sess.Stdin = bytes.NewReader(stdin)
 	}
 	_out := new(strings.Builder)
 	_err := new(strings.Builder)
@@ -315,62 +307,15 @@ func (c *Controller) RandomClient() *Client {
 	return nil
 }
 
-func strFrom(this any) string {
-	switch v := this.(type) {
-	case string:
-		return v
-	case []byte:
-		return string(v)
-	case io.Reader:
-		byt, err := io.ReadAll(v)
-		if err != nil {
-			return ``
-		}
-		return string(byt)
-	default:
-		return ``
-	}
-}
-
-func bytFrom(this any) []byte {
-	switch v := this.(type) {
-	case string:
-		return []byte(v)
-	case []byte:
-		return v
-	case io.Reader:
-		byt, err := io.ReadAll(v)
-		if err != nil {
-			return nil
-		}
-		return byt
-	default:
-		return nil
-	}
-}
-
 // RunOnAny calls [Client.Run] on a random client from the [Clients]
-// list.  If error returned is of type [net.OpError] the
+// list. If error returned is of type [net.OpError] the
 // [Client.Connected] is set to false and the next client in the
 // [Clients] order is attempted. Then client producing the error has
 // [Client.Connect] called in a separate goroutine (which, if successful,
-// restores its [Client.Connected] status to true). If none of the clients are
-// connected then an [AllUnavailable] error is returned. The first
-// argument is the command line to send and is always required and may be either a string or []byte
-// slice. The second argument is optional and is the standard input.
-// Either may be a string, []byte slice, or io.Reader (which will be
-// fully read).
-func (c *Controller) RunOnAny(args ...any) (stdout, stderr string, err error) {
-
-	if len(args) < 1 {
-		return ``, ``, CommandLineMissing{}
-	}
-	cmd := strFrom(args[0])
-
-	var stdin []byte
-	if len(args) > 1 {
-		stdin = bytFrom(args[1])
-	}
+// restores its [Client.Connected] status to true). If none of the
+// clients are connected then an [AllUnavailable] error is returned.
+// The cmd is always required but stdin may be nil.
+func (c *Controller) RunOnAny(cmd string, stdin []byte) (stdout, stderr string, err error) {
 
 	client := c.RandomClient()
 	if client == nil {
@@ -382,7 +327,7 @@ func (c *Controller) RunOnAny(args ...any) (stdout, stderr string, err error) {
 	if _, is := err.(*net.OpError); is {
 		client.connected = false
 		go client.Connect()
-		c.RunOnAny(args...)
+		c.RunOnAny(cmd, stdin)
 	}
 
 	return
